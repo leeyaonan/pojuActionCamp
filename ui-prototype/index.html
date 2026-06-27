@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI破局行动营管理平台 · UI原型</title>
+<style>
+:root{
+  --primary:#4f46e5; --primary-light:#eef2ff; --primary-dark:#4338ca;
+  --bg:#f6f7fb; --surface:#ffffff; --border:#e5e7eb;
+  --text:#1f2937; --text-sub:#6b7280; --text-light:#9ca3af;
+  --success:#16a34a; --success-bg:#dcfce7;
+  --warning:#d97706; --warning-bg:#fef3c7;
+  --danger:#dc2626; --danger-bg:#fee2e2;
+  --star:#f59e0b;
+  --radius:10px; --radius-sm:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 4px 12px rgba(0,0,0,.08);
+  --sidebar-w:248px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+a{color:inherit;text-decoration:none}
+
+/* layout */
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;overflow-y:auto}
+.main{margin-left:var(--sidebar-w);flex:1;padding:24px 32px;min-width:0}
+
+/* sidebar */
+.logo{display:flex;align-items:center;gap:8px;padding:8px 12px 16px;font-weight:700;font-size:15px;color:var(--primary)}
+.logo .dot{width:10px;height:10px;border-radius:3px;background:var(--primary)}
+.new-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;border:1px dashed var(--border);border-radius:var(--radius-sm);color:var(--text-sub);font-size:13px;margin-bottom:8px;transition:.15s}
+.new-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
+.nav-section-title{font-size:11px;color:var(--text-light);padding:14px 12px 6px;font-weight:600;letter-spacing:.5px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius-sm);color:var(--text-sub);font-size:13px;cursor:pointer;transition:.12s}
+.nav-item:hover{background:var(--bg);color:var(--text)}
+.nav-item.active{background:var(--primary-light);color:var(--primary);font-weight:600}
+.nav-item .indent{width:14px}
+.camp-group{margin:2px 0}
+.camp-head{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--text)}
+.camp-head:hover{background:var(--bg)}
+.camp-head.active{background:var(--primary-light);color:var(--primary);font-weight:600}
+.camp-head .role-tag{font-size:10px;padding:1px 5px;border-radius:4px;margin-left:auto;font-weight:600}
+.role-tag.student{background:#dbeafe;color:#1d4ed8}
+.role-tag.volunteer{background:#fce7f3;color:#be185d}
+.camp-children{padding-left:8px}
+.camp-children .nav-item{font-size:12.5px;padding:6px 12px}
+.sidebar-spacer{flex:1}
+.sidebar-footer{padding:8px 12px;font-size:11px;color:var(--text-light);border-top:1px solid var(--border);margin-top:8px}
+
+/* page */
+.page{display:none;animation:fade .2s}
+.page.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* typography & components */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.page-title{font-size:20px;font-weight:700}
+.page-sub{color:var(--text-sub);font-size:13px;margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;transition:.15s;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.btn:hover{background:var(--bg)}
+.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn-primary:hover{background:var(--primary-dark)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-danger{color:var(--danger);border-color:#fecaca}
+.btn-danger:hover{background:var(--danger-bg)}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.card + .card{margin-top:16px}
+.card-title{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.badge-green{background:var(--success-bg);color:var(--success)}
+.badge-orange{background:var(--warning-bg);color:var(--warning)}
+.badge-gray{background:#f3f4f6;color:var(--text-sub)}
+.badge-blue{background:#dbeafe;color:#1d4ed8}
+.badge-red{background:var(--danger-bg);color:var(--danger)}
+
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.stat .num{font-size:26px;font-weight:700;line-height:1.2}
+.stat .lbl{font-size:12px;color:var(--text-sub);margin-top:4px}
+.stat .num.warn{color:var(--warning)}
+.stat .num.danger{color:var(--danger)}
+
+/* form */
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+.form-label .req{color:var(--danger)}
+.form-hint{font-size:12px;color:var(--text-light);margin-top:4px}
+.input,.textarea,.select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-family:inherit;transition:.15s;background:var(--surface)}
+.input:focus,.textarea:focus,.select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.1)}
+.textarea{resize:vertical;min-height:90px;line-height:1.6}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.role-pick{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.role-option{border:2px solid var(--border);border-radius:var(--radius);padding:16px;cursor:pointer;transition:.15s}
+.role-option:hover{border-color:var(--primary)}
+.role-option.selected{border-color:var(--primary);background:var(--primary-light)}
+.role-option .t{font-weight:600;font-size:14px;margin-bottom:4px}
+.role-option .d{font-size:12px;color:var(--text-sub)}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 12px;font-size:12px;color:var(--text-sub);font-weight:600;border-bottom:1px solid var(--border);background:#fafbfc}
+td{padding:11px 12px;border-bottom:1px solid var(--border)}
+tr:hover td{background:#fafbfc}
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+
+/* progress */
+.progress{height:8px;background:#eef0f3;border-radius:4px;overflow:hidden}
+.progress>span{display:block;height:100%;background:var(--primary);border-radius:4px}
+.progress-bar-lg{height:10px}
+
+/* stars */
+.stars{color:var(--star);font-size:15px;letter-spacing:1px;white-space:nowrap}
+.stars .empty{color:#e5e7eb}
+.star-pick{font-size:22px;cursor:pointer;letter-spacing:3px}
+.star-pick .s{color:#e5e7eb;transition:.1s}
+.star-pick .s.on{color:var(--star)}
+
+/* switch */
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px}
+.switch .track{width:38px;height:22px;background:#d1d5db;border-radius:11px;position:relative;transition:.2s}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.switch.on .track{background:var(--primary)}
+.switch.on .track::after{left:18px}
+
+/* grid helpers */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.flex{display:flex;align-items:center}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+.gap-8{gap:8px}.gap-12{gap:12px}.gap-16{gap:16px}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mt-20{margin-top:20px}
+.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}
+.text-sub{color:var(--text-sub)}.text-light{color:var(--text-light)}
+.text-sm{font-size:12px}.text-md{font-size:13px}
+.muted-box{background:#fafbfc;border:1px dashed var(--border);border-radius:var(--radius-sm);padding:12px;font-size:12.5px;color:var(--text-sub)}
+.tag{font-size:11px;padding:2px 7px;border-radius:5px;background:#f3f4f6;color:var(--text-sub);font-weight:600}
+.divider{height:1px;background:var(--border);margin:14px 0}
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;color:var(--text-sub);transition:.15s;cursor:pointer}
+.upload-zone:hover{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+.checkin-block{background:#fafbfc;border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px}
+.checkin-block .bt{font-size:12px;font-weight:600;color:var(--primary);margin-bottom:4px}
+.timeline-item{position:relative;padding:0 0 18px 20px;border-left:2px solid var(--border)}
+.timeline-item:last-child{border-left:2px solid transparent}
+.timeline-item::before{content:"";position:absolute;left:-6px;top:2px;width:10px;height:10px;border-radius:50%;background:var(--primary);border:2px solid var(--surface)}
+.timeline-date{font-size:12px;color:var(--text-sub);font-weight:600}
+.help-bar{background:var(--primary-light);border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;color:var(--primary-dark);display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.collapse-head{cursor:pointer;user-select:none}
+.collapsible{max-height:0;overflow:hidden;transition:max-height .25s}
+.collapsible.open{max-height:600px}
+.empty-hint{text-align:center;padding:32px;color:var(--text-light);font-size:13px}
+.tab-row{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab{padding:8px 14px;font-size:13px;color:var(--text-sub);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.kbd{font-family:monospace;background:#f3f4f6;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px}
+.note-banner{background:var(--warning-bg);border:1px solid #fde68a;border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;color:#92400e;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="logo"><span class="dot"></span>破局行动营管理</div>
+  <button class="new-btn" onclick="go('create')">＋ 新建行动营</button>
+
+  <div class="nav-section-title">行动营</div>
+
+  <!-- 行动营1: 学员 -->
+  <div class="camp-group">
+    <div class="camp-head active" onclick="selectCamp('student')">
+      <span>📓</span><span>AI写作破局营</span>
+      <span class="role-tag student">学员</span>
+    </div>
+    <div class="camp-children">
+      <div class="nav-item active" onclick="go('student-dashboard')">今日看板</div>
+      <div class="nav-item" onclick="go('student-route')">学习路线</div>
+      <div class="nav-item" onclick="go('student-checkin')">打卡生成</div>
+      <div class="nav-item" onclick="go('manual')">手册管理</div>
+    </div>
+  </div>
+
+  <!-- 行动营2: 志愿者 -->
+  <div class="camp-group">
+    <div class="camp-head" onclick="selectCamp('volunteer')">
+      <span>🧑‍🏫</span><span>提示词破局营</span>
+      <span class="role-tag volunteer">志愿者</span>
+    </div>
+    <div class="camp-children" id="volunteer-children" style="display:none">
+      <div class="nav-item" onclick="go('volunteer-dashboard')">学员看板</div>
+      <div class="nav-item" onclick="go('volunteer-grade')">作业评改</div>
+      <div class="nav-item" onclick="go('manual')">手册管理</div>
+    </div>
+  </div>
+
+  <div class="nav-section-title">全局</div>
+  <div class="nav-item" onclick="go('home')">🏠 全部行动营</div>
+  <div class="nav-item" onclick="go('scoring')">📋 评分标准</div>
+  <div class="nav-item" onclick="go('settings')">⚙️ 接口配置</div>
+
+  <div class="sidebar-spacer"></div>
+  <div class="sidebar-footer">UI 原型 v0.1 · 本地工具<br>点击侧边栏/卡片可跳转</div>
+</aside>
+
+<!-- ============ MAIN ============ -->
+<main class="main">
+
+<!-- ===== P: HOME 行动营列表 ===== -->
+<section class="page active" data-page="home">
+  <div class="page-header">
+    <div>
+      <div class="page-title">我的行动营</div>
+      <div class="page-sub">管理你参加的每一期破局行动营</div>
+    </div>
+    <button class="btn btn-primary" onclick="go('create')">＋ 新建行动营</button>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="num">2</div><div class="lbl">进行中</div></div>
+    <div class="stat"><div class="num">1</div><div class="lbl">已结束</div></div>
+    <div class="stat"><div class="num">1</div><div class="lbl">学员身份</div></div>
+    <div class="stat"><div class="num">1</div><div class="lbl">志愿者身份</div></div>
+  </div>
+
+  <div class="card" style="cursor:pointer" onclick="selectCamp('student');go('student-dashboard')">
+    <div class="flex-between">
+      <div class="flex gap-12">
+        <div style="font-size:24px">📓</div>
+        <div>
+          <div class="flex gap-8"><strong style="font-size:15px">AI写作破局营</strong><span class="badge badge-blue">学员</span><span class="badge badge-green">进行中</span></div>
+          <div class="text-sm text-sub mt-8">30天 · 2026/06/15 ~ 2026/07/14 · 最低打卡 18 天</div>
+        </div>
+      </div>
+      <div style="min-width:200px">
+        <div class="flex-between text-sm mb-8"><span class="text-sub">Day 5 / 30</span><span>有效打卡 3 / 18</span></div>
+        <div class="progress"><span style="width:17%"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="cursor:pointer" onclick="selectCamp('volunteer');go('volunteer-dashboard')">
+    <div class="flex-between">
+      <div class="flex gap-12">
+        <div style="font-size:24px">🧑‍🏫</div>
+        <div>
+          <div class="flex gap-8"><strong style="font-size:15px">提示词破局营</strong><span class="badge badge-red" style="background:#fce7f3;color:#be185d">志愿者</span><span class="badge badge-green">进行中</span></div>
+          <div class="text-sm text-sub mt-8">21天 · 2026/06/20 ~ 2026/07/10 · 带教 30 名学员</div>
+        </div>
+      </div>
+      <div style="min-width:200px">
+        <div class="flex-between text-sm mb-8"><span class="text-sub">Day 8 / 21</span><span class="badge badge-orange">8 人待评改</span></div>
+        <div class="progress"><span style="width:38%"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="opacity:.7">
+    <div class="flex-between">
+      <div class="flex gap-12">
+        <div style="font-size:24px">✅</div>
+        <div>
+          <div class="flex gap-8"><strong style="font-size:15px">AI绘画破局营</strong><span class="badge badge-blue">学员</span><span class="badge badge-gray">已结束</span></div>
+          <div class="text-sm text-sub mt-8">30天 · 2026/05/01 ~ 2026/05/30 · 已完成 22 天有效打卡，押金已退</div>
+        </div>
+      </div>
+      <span class="text-light text-sm">查看复盘 →</span>
+    </div>
+  </div>
+</section>
+
+<!-- ===== P: CREATE 创建行动营 ===== -->
+<section class="page" data-page="create">
+  <div class="page-header">
+    <div><div class="page-title">新建行动营</div><div class="page-sub">创建后将根据所选身份进入对应工作台</div></div>
+    <button class="btn" onclick="go('home')">← 返回</button>
+  </div>
+
+  <div class="card">
+    <div class="form-group">
+      <label class="form-label">身份 <span class="req">*</span><span class="form-hint" style="display:inline;margin-left:8px">单期行动营仅一个主身份，创建后不可更改</span></label>
+      <div class="role-pick">
+        <div class="role-option selected" onclick="pickRole(this)">
+          <div class="t">📓 学员</div>
+          <div class="d">需交押金、每日打卡，满最低天数退押金</div>
+        </div>
+        <div class="role-option" onclick="pickRole(this)">
+          <div class="t">🧑‍🏫 志愿者</div>
+          <div class="d">免押金、免费看手册，负责带教学员与作业评改</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">行动营名称 <span class="req">*</span></label>
+      <input class="input" value="AI写作破局营">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">简介</label>
+      <textarea class="textarea" placeholder="本期主题、训练目标……">围绕 AI 辅助写作的 30 天专项训练，从选题、框架到成稿全流程实操。</textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">总天数 <span class="req">*</span></label>
+        <input class="input" type="number" value="30" oninput="calcMin()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">最低打卡完成天数 <span class="req">*</span></label>
+        <input class="input" type="number" value="18" id="minDays">
+        <div class="form-hint">默认 = 总天数 × 0.6，可手动修改。达到后可退押金</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">开始时间 <span class="req">*</span></label>
+        <input class="input" type="date" value="2026-06-15">
+      </div>
+      <div class="form-group">
+        <label class="form-label">结束时间 <span class="req">*</span></label>
+        <input class="input" type="date" value="2026-07-14">
+        <div class="form-hint">应与开始时间 + 总天数相符</div>
+      </div>
+    </div>
+
+    <div class="muted-box mt-12">创建后下一步：进入「手册管理」上传手册文本 → 学员身份将自动规划学习路线；志愿者身份需到「接口配置」填入 Token。</div>
+
+    <div class="flex gap-12 mt-20">
+      <button class="btn btn-primary" onclick="go('student-dashboard');selectCamp('student')">创建行动营</button>
+      <button class="btn" onclick="go('home')">取消</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== P: STUDENT-DASHBOARD 学员今日看板 ===== -->
+<section class="page" data-page="student-dashboard">
+  <div class="page-header">
+    <div>
+      <div class="page-title">今日看板 <span class="badge badge-blue" style="vertical-align:middle">学员</span></div>
+      <div class="page-sub">AI写作破局营 · 2026/06/15 ~ 2026/07/14</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-sm" onclick="go('student-route')">学习路线</button>
+      <button class="btn btn-sm" onclick="go('manual')">手册</button>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="num">5 <span class="text-light" style="font-size:14px">/ 30</span></div><div class="lbl">训练进度 Day</div></div>
+    <div class="stat"><div class="num">3 <span class="text-light" style="font-size:14px">/ 18</span></div><div class="lbl">有效打卡（2★+）</div></div>
+    <div class="stat"><div class="num">15</div><div class="lbl">距退押金还差</div></div>
+    <div class="stat"><div class="num">2</div><div class="lbl">已评改 2★ 以下</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>📌 今日任务 · Day 5</span>
+      <span class="text-sm text-sub">2026/06/19（周五）</span>
+    </div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">学习「SCQA 框架」并用它改写一篇旧文</div>
+    <div class="text-sub text-md">阅读手册第 3 章，理解 Situation-Complication-Question-Answer 结构；挑选一篇自己过往的文章，用 SCQA 框架重新组织开头，对比改写前后的表达力差异。</div>
+    <div class="flex gap-8 mt-16">
+      <span class="tag">手册第3章</span>
+      <span class="tag">实操练习</span>
+      <span class="tag">预计 60 分钟</span>
+    </div>
+    <div class="flex gap-12 mt-20">
+      <button class="btn btn-primary" onclick="go('student-checkin')">✍️ 生成今日打卡 →</button>
+      <button class="btn" onclick="go('student-route')">查看完整学习路线</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>🗓 本周任务预览</span><span class="text-sm text-light">Day 5 ~ Day 7</span></div>
+    <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div class="flex gap-12"><span class="badge badge-blue">Day5·今天</span><span>SCQA 框架学习与改写练习</span></div>
+      <span class="text-light text-sm">进行中</span>
+    </div>
+    <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div class="flex gap-12"><span class="tag">Day6</span><span>标题撰写：5 种高点击标题公式</span></div>
+      <span class="text-light text-sm">未开始</span>
+    </div>
+    <div class="flex-between" style="padding:8px 0">
+      <div class="flex gap-12"><span class="tag">Day7</span><span>本周复盘 + 直播答疑（20:00）</span></div>
+      <span class="text-light text-sm">未开始</span>
+    </div>
+  </div>
+</section>
+
+<!-- ===== P: STUDENT-ROUTE 学习路线 ===== -->
+<section class="page" data-page="student-route">
+  <div class="page-header">
+    <div>
+      <div class="page-title">学习路线 <span class="badge badge-blue" style="vertical-align:middle">学员</span></div>
+      <div class="page-sub">AI 根据手册内容自动规划，可手动编辑调整</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-sm" onclick="alert('将基于手册重新生成，会覆盖 AI 生成部分。是否保留你已编辑的内容？')">🔄 重新规划</button>
+      <button class="btn btn-sm" onclick="go('manual')">上传/更新手册</button>
+    </div>
+  </div>
+
+  <div class="help-bar">💡 手册本身无固定按天结构，以上路线由 AI 根据总天数与内容量自主规划，你可逐日编辑。</div>
+
+  <div class="card">
+    <div class="flex-between" style="padding:10px 0;background:#fafbfc;border-radius:6px;padding:10px 12px">
+      <div class="flex gap-12"><span class="badge badge-gray">Day1</span><strong>开营：认知 AI 写作的工作流</strong></div>
+      <span class="badge badge-green">已完成</span>
+    </div>
+    <div class="divider"></div>
+    <div class="flex-between" style="padding:10px 12px;background:var(--primary-light);border-radius:6px">
+      <div class="flex gap-12"><span class="badge badge-blue">Day5·今天</span><strong>SCQA 框架学习与改写练习</strong></div>
+      <div class="flex gap-8"><button class="btn btn-sm">编辑</button><button class="btn btn-primary btn-sm" onclick="go('student-checkin')">去打卡</button></div>
+    </div>
+    <div style="padding:6px 12px 6px 56px;color:var(--text-sub);font-size:12.5px">阅读手册第3章，用 SCQA 重写旧文开头，对比表达力差异。</div>
+    <div class="divider"></div>
+    <div class="flex-between" style="padding:10px 12px">
+      <div class="flex gap-12"><span class="badge badge-gray">Day6</span><strong>标题撰写：5 种高点击公式</strong></div>
+      <button class="btn btn-sm">编辑</button>
+    </div>
+    <div class="divider"></div>
+    <div class="flex-between" style="padding:10px 12px">
+      <div class="flex gap-12"><span class="badge badge-gray">Day7</span><strong>本周复盘 + 直播答疑</strong></div>
+      <button class="btn btn-sm">编辑</button>
+    </div>
+    <div class="divider"></div>
+    <div class="flex-between" style="padding:10px 12px">
+      <div class="flex gap-12"><span class="badge badge-gray">Day8</span><strong>素材搜集与卡片化管理</strong></div>
+      <button class="btn btn-sm">编辑</button>
+    </div>
+    <div class="empty-hint" style="padding:16px">…… 共 30 天，下拉查看更多 / 展开折叠</div>
+  </div>
+</section>
+
+<!-- ===== P: STUDENT-CHECKIN 打卡生成 ===== -->
+<section class="page" data-page="student-checkin">
+  <div class="page-header">
+    <div>
+      <div class="page-title">打卡生成 <span class="badge badge-blue" style="vertical-align:middle">学员</span></div>
+      <div class="page-sub">输入今日所做，AI 生成结构化打卡内容 · Day 5</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- 左：输入 -->
+    <div class="card">
+      <div class="card-title">📝 今日所做（输入）</div>
+
+      <div class="form-group">
+        <label class="form-label">文字描述</label>
+        <textarea class="textarea" id="checkinInput" style="min-height:120px" placeholder="今天做了什么？随意写，AI 会帮你整理成结构化打卡">今天学了 SCQA 框架，挑了上个月写的一篇读书笔记，用 SCQA 重写了开头三段。改完之后开头明显更有悬念了，朋友说想看下去。另外在群里分享了改写对比，有同学给我点赞。</textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">图片（选填，作为生成参考）</label>
+        <div class="upload-zone" style="padding:20px">
+          <div style="font-size:22px">🖼</div>
+          <div class="text-sm">点击或拖拽上传图片</div>
+          <div class="text-light text-sm mt-8">如：改写对比截图、练习成果</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="flex-between">
+        <div>
+          <label class="switch" id="autoSubmitSwitch" onclick="toggleSwitch('autoSubmitSwitch')">
+            <span class="track"></span><span>自动提交到破局</span>
+          </label>
+          <div class="form-hint">关闭=手动复制提交（默认，便于把控质量）；开启=确认后自动调用接口提交</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary mt-16" style="width:100%" onclick="generateCheckin()">✨ 生成打卡内容</button>
+    </div>
+
+    <!-- 右：结果 -->
+    <div class="card">
+      <div class="card-title">
+        <span>✅ 生成结果</span>
+        <span class="badge badge-green" id="genStatus">已生成</span>
+      </div>
+
+      <div id="checkinResult">
+        <div class="checkin-block">
+          <div class="bt">今日行动</div>
+          <div>学习 SCQA 框架（情境-冲突-问题-答案），并选取上月一篇读书笔记，用该框架重写开头三段，对比改写前后表达力。</div>
+        </div>
+        <div class="checkin-block">
+          <div class="bt">今日收获</div>
+          <div>SCQA 的"冲突"环节是制造悬念的关键。旧文开头平铺直叙，改写后先抛出"为什么这本书读完我没记住"，再引出方法，代入感强很多。</div>
+        </div>
+        <div class="checkin-block">
+          <div class="bt">好事分享</div>
+          <div>改写对比发到群里，有同学点赞并说这个对比很有启发，还私信问了我具体方法。</div>
+        </div>
+        <div class="checkin-block">
+          <div class="bt">下一步行动</div>
+          <div>明天把 SCQA 应用到新选题的开头，并尝试在正文结构中也引入"冲突-解决"的节奏。</div>
+        </div>
+      </div>
+
+      <div class="muted-box mt-12">打卡内容无强制格式与字数要求，AI 依据你输入的真实情况生成，可编辑修改。</div>
+
+      <div class="flex gap-12 mt-16">
+        <button class="btn btn-primary" id="submitBtn" onclick="submitCheckin()">复制内容 / 提交</button>
+        <button class="btn">编辑修改</button>
+        <button class="btn" onclick="generateCheckin()">重新生成</button>
+      </div>
+      <div class="form-hint mt-8" id="submitHint">当前为手动提交：点击后将内容复制到剪贴板，请粘贴到破局打卡页面。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>📋 本期打卡记录</span><span class="text-sm text-sub">3 次有效 / 1 次待评改</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>日期</th><th>Day</th><th>核心行动</th><th>星级</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>06/19</td><td>Day5</td><td>SCQA 框架改写练习</td><td><span class="text-light">待评改</span></td><td><span class="badge badge-orange">已提交</span></td></tr>
+          <tr><td>06/18</td><td>Day4</td><td>选题方法实操</td><td class="stars">★★★</td><td><span class="badge badge-green">有效</span></td></tr>
+          <tr><td>06/17</td><td>Day3</td><td>阅读手册+笔记</td><td class="stars">★★<span class="empty">★</span></td><td><span class="badge badge-green">有效</span></td></tr>
+          <tr><td>06/16</td><td>Day2</td><td>认知工作流</td><td class="stars">★<span class="empty">★★</span></td><td><span class="badge badge-red">无效</span></td></tr>
+          <tr><td>06/15</td><td>Day1</td><td>开营认知</td><td class="stars">★★<span class="empty">★</span></td><td><span class="badge badge-green">有效</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===== P: VOLUNTEER-DASHBOARD 志愿者学员看板 ===== -->
+<section class="page" data-page="volunteer-dashboard">
+  <div class="page-header">
+    <div>
+      <div class="page-title">学员看板 <span class="badge badge-red" style="background:#fce7f3;color:#be185d;vertical-align:middle">志愿者</span></div>
+      <div class="page-sub">提示词破局营 · 带教 30 名学员 · 上次同步 06/19 09:00</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-sm">⏱ 定时同步：每日 09:00</button>
+      <button class="btn btn-primary btn-sm" onclick="alert('已触发同步，拉取最新学员打卡数据…')">🔄 立即同步</button>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="num">30</div><div class="lbl">带教学员</div></div>
+    <div class="stat"><div class="num warn">8</div><div class="lbl">待评改</div></div>
+    <div class="stat"><div class="num">22</div><div class="lbl">今日已打卡</div></div>
+    <div class="stat"><div class="num danger">5</div><div class="lbl">打卡不足需提醒</div></div>
+  </div>
+
+  <div class="card">
+    <div class="flex-between mb-12">
+      <div class="tab-row" style="margin:0;border:none">
+        <div class="tab active">全部 30</div>
+        <div class="tab">待评改 8</div>
+        <div class="tab">打卡不足 5</div>
+        <div class="tab">已评改 22</div>
+      </div>
+      <input class="input" style="width:200px" placeholder="🔍 搜索学员昵称">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>学员</th><th>已打卡</th><th>有效天数</th><th>距目标</th><th>最近星级</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>林小满</strong></td><td>Day8</td><td>6 / 13</td><td>差 7</td>
+            <td><span class="stars">★★<span class="empty">★</span></span></td>
+            <td><span class="badge badge-orange">待评改</span></td>
+            <td><button class="btn btn-primary btn-sm" onclick="go('volunteer-grade')">去评改</button></td>
+          </tr>
+          <tr>
+            <td><strong>陈一航</strong></td><td>Day8</td><td>5 / 13</td><td>差 8</td>
+            <td><span class="stars">★<span class="empty">★★</span></span></td>
+            <td><span class="badge badge-orange">待评改</span></td>
+            <td><button class="btn btn-primary btn-sm" onclick="go('volunteer-grade')">去评改</button></td>
+          </tr>
+          <tr>
+            <td><strong>王野</strong></td><td>Day7</td><td>7 / 13</td><td>差 6</td>
+            <td><span class="stars">★★★</span></td>
+            <td><span class="badge badge-green">已评改</span></td>
+            <td><button class="btn btn-sm" onclick="go('volunteer-archive')">查看档案</button></td>
+          </tr>
+          <tr>
+            <td><strong>赵敏</strong></td><td>Day3</td><td>2 / 13</td><td class="text-sub">差 11 ⚠</td>
+            <td><span class="stars">★★<span class="empty">★</span></span></td>
+            <td><span class="badge badge-red">打卡不足</span></td>
+            <td><button class="btn btn-sm" onclick="go('volunteer-archive')">查看档案</button></td>
+          </tr>
+          <tr>
+            <td><strong>孙立</strong></td><td>Day8</td><td>6 / 13</td><td>差 7</td>
+            <td><span class="text-light">—</span></td>
+            <td><span class="badge badge-gray">今日未打卡</span></td>
+            <td><button class="btn btn-sm" onclick="go('volunteer-archive')">查看档案</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="text-light text-sm mt-12">显示 5 / 30 名学员 · 下拉加载更多</div>
+  </div>
+</section>
+
+<!-- ===== P: VOLUNTEER-GRADE 作业评改 ===== -->
+<section class="page" data-page="volunteer-grade">
+  <div class="page-header">
+    <div>
+      <div class="page-title">作业评改 <span class="badge badge-red" style="background:#fce7f3;color:#be185d;vertical-align:middle">志愿者</span></div>
+      <div class="page-sub">AI 结合手册 + 学员档案生成评改建议，确认后同步破局</div>
+    </div>
+    <div class="flex gap-8">
+      <span class="badge badge-orange">8 人待评改</span>
+      <button class="btn btn-sm">批量确认</button>
+    </div>
+  </div>
+
+  <div class="grid-2" style="grid-template-columns:280px 1fr">
+    <!-- 左：待评改列表 -->
+    <div class="card" style="align-self:start">
+      <div class="card-title">待评改列表</div>
+      <div style="padding:9px 10px;background:var(--primary-light);border-radius:6px;margin-bottom:6px;cursor:pointer">
+        <div class="flex-between"><strong style="font-size:13px">林小满</strong><span class="text-light text-sm">Day8</span></div>
+        <div class="text-light text-sm" style="margin-top:2px">06/19 · 提示词链式调用</div>
+      </div>
+      <div style="padding:9px 10px;border-radius:6px;margin-bottom:6px;cursor:pointer" class="muted-box" style="border-style:solid">
+        <div class="flex-between"><strong style="font-size:13px">陈一航</strong><span class="text-light text-sm">Day8</span></div>
+        <div class="text-light text-sm" style="margin-top:2px">06/19 · 提示词链式调用</div>
+      </div>
+      <div class="muted-box" style="padding:9px 10px;margin-bottom:6px">
+        <div class="flex-between"><strong style="font-size:13px">周婷</strong><span class="text-light text-sm">Day8</span></div>
+        <div class="text-light text-sm" style="margin-top:2px">06/19 · 提示词链式调用</div>
+      </div>
+      <div class="text-light text-sm" style="text-align:center;padding:8px">还有 5 人 …</div>
+    </div>
+
+    <!-- 右：评改详情 -->
+    <div>
+      <div class="card">
+        <div class="flex-between mb-12">
+          <div>
+            <div style="font-size:16px;font-weight:700">林小满 · Day8 打卡</div>
+            <div class="text-sm text-sub">提示词链式调用 · 06/19 提交</div>
+          </div>
+          <button class="btn btn-sm" onclick="go('volunteer-archive')">📂 查看完整档案</button>
+        </div>
+
+        <div class="muted-box" style="border-style:solid;background:#fff">
+          <div class="text-sm" style="font-weight:600;margin-bottom:6px;color:var(--text)">学员本次打卡内容：</div>
+          <div class="text-sm text-sub">今日行动：学习提示词链式调用，用"拆解→生成→校验"三段链完成了一个翻译润色任务；今日收获：链式比单次大提示词更可控，每步都能校验……</div>
+        </div>
+      </div>
+
+      <!-- 历史档案参考 -->
+      <div class="card">
+        <div class="collapse-head flex-between" onclick="toggleCollapse('archiveRef')">
+          <span class="card-title" style="margin:0">📂 该学员历史档案参考（判断进步/原创性）</span>
+          <span class="text-light text-sm">▾</span>
+        </div>
+        <div class="collapsible open" id="archiveRef" style="margin-top:12px">
+          <div class="text-sm text-sub mb-12">AI 评改时会参考以下历史作业，判断是否抄袭/重复、是否有进步：</div>
+          <div class="timeline-item">
+            <div class="timeline-date">Day7 · 06/18 · ★★</div>
+            <div class="text-sm text-sub mt-8">学习角色提示词，给 AI 设定了"资深翻译"角色，翻译质量明显提升。</div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-date">Day6 · 06/17 · ★★</div>
+            <div class="text-sm text-sub mt-8">少样本提示练习，提供了 3 个翻译示例让 AI 学习风格。</div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-date">Day5 · 06/16 · ★</div>
+            <div class="text-sm text-sub mt-8">基础提示词练习，内容偏简单，套话较多。<span class="badge badge-red" style="margin-left:6px">无效</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI评改结果 -->
+      <div class="card">
+        <div class="card-title"><span>🤖 AI 评改结果</span><span class="badge badge-blue">可修改后确认</span></div>
+
+        <div class="form-group">
+          <label class="form-label">星级</label>
+          <div class="star-pick" id="starPick">
+            <span class="s on" onclick="pickStar(1)">★</span>
+            <span class="s on" onclick="pickStar(2)">★</span>
+            <span class="s on" onclick="pickStar(3)">★</span>
+            <span class="text-sm text-sub" style="margin-left:12px;font-size:13px" id="starLabel">三星 · 有效打卡</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">评语</label>
+          <textarea class="textarea">行动真实具体，"拆解→生成→校验"三段链描述清晰，体现了对链式调用的理解。相比 Day5 的基础练习进步明显，从套话转向了可控流程的实操。收获部分对"可控性"的感悟有深度。建议下一步尝试在生成段加入温度参数调试。</textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">评改依据（维度得分）</label>
+          <div class="grid-3 text-sm">
+            <div class="muted-box" style="border-style:solid">完整度：<strong>优</strong></div>
+            <div class="muted-box" style="border-style:solid">行动真实性：<strong>优</strong></div>
+            <div class="muted-box" style="border-style:solid">收获深度：<strong>良</strong></div>
+            <div class="muted-box" style="border-style:solid">进步性：<strong>优</strong></div>
+            <div class="muted-box" style="border-style:solid">原创性：<strong>优</strong></div>
+          </div>
+        </div>
+
+        <div class="collapse-head flex-between" onclick="toggleCollapse('scoringRef')" style="margin-top:8px">
+          <span class="text-sm text-sub">📋 查看评分标准参考</span>
+          <span class="text-light text-sm">▾</span>
+        </div>
+        <div class="collapsible" id="scoringRef" style="margin-top:8px">
+          <div class="muted-box text-sm">三星=各维度达标+有进步亮点；二星=基本达标+完整真实无抄袭；一星=敷衍/不完整/套话/抄袭重复。</div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="flex gap-12">
+          <button class="btn btn-primary" onclick="alert('已同步到破局平台 ✓\n该学员档案已更新')">✓ 确认并同步到破局</button>
+          <button class="btn">仅保存不同步</button>
+          <button class="btn">重新生成评改</button>
+        </div>
+        <div class="form-hint mt-8">确认后将调用破局「给学员作业打分和评价」接口同步星级与评语，并写入该学员档案。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== P: VOLUNTEER-ARCHIVE 学员档案 ===== -->
+<section class="page" data-page="volunteer-archive">
+  <div class="page-header">
+    <div>
+      <div class="page-title">学员档案 <span class="badge badge-red" style="background:#fce7f3;color:#be185d;vertical-align:middle">志愿者</span></div>
+      <div class="page-sub">仅志愿者可见 · 用于评改时参考历史作业</div>
+    </div>
+    <button class="btn btn-sm" onclick="go('volunteer-dashboard')">← 返回学员看板</button>
+  </div>
+
+  <div class="note-banner">🔒 学员档案仅志愿者侧可见，学员本人不可见。每次评改时 AI 会参考此档案判断进步与原创性。</div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="num">林小满</div><div class="lbl">学员昵称</div></div>
+    <div class="stat"><div class="num">7 <span class="text-light" style="font-size:14px">/ 13</span></div><div class="lbl">有效打卡</div></div>
+    <div class="stat"><div class="num warn">6</div><div class="lbl">距目标还差</div></div>
+    <div class="stat"><div class="num">2.3</div><div class="lbl">平均星级</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>📜 打卡与评改时间线</span><span class="text-sm text-sub">共 8 次打卡</span></div>
+
+    <div class="timeline-item">
+      <div class="flex-between"><div class="timeline-date">Day8 · 06/19 · 提示词链式调用</div><span class="badge badge-orange">待评改</span></div>
+      <div class="text-sm text-sub mt-8">学习提示词链式调用，用"拆解→生成→校验"三段链完成翻译润色任务……</div>
+    </div>
+    <div class="timeline-item">
+      <div class="flex-between"><div class="timeline-date">Day7 · 06/18 · 角色提示词</div><span class="stars">★★<span class="empty">★</span></span></div>
+      <div class="text-sm text-sub mt-8">给 AI 设定"资深翻译"角色，翻译质量明显提升。</div>
+      <div class="muted-box text-sm mt-8" style="border-style:solid">评语：角色设定意识好，质量提升可见。建议下一步结合少样本。</div>
+    </div>
+    <div class="timeline-item">
+      <div class="flex-between"><div class="timeline-date">Day6 · 06/17 · 少样本提示</div><span class="stars">★★<span class="empty">★</span></span></div>
+      <div class="text-sm text-sub mt-8">提供 3 个翻译示例让 AI 学习风格。</div>
+      <div class="muted-box text-sm mt-8" style="border-style:solid">评语：示例选择有针对性，体现了风格迁移的理解。</div>
+    </div>
+    <div class="timeline-item">
+      <div class="flex-between"><div class="timeline-date">Day5 · 06/16 · 基础提示词</div><span class="stars">★<span class="empty">★★</span></span></div>
+      <div class="text-sm text-sub mt-8">基础提示词练习，内容偏简单，套话较多。</div>
+      <div class="muted-box text-sm mt-8" style="border-style:solid;background:var(--danger-bg);color:var(--danger)">评语：内容敷衍偏套话，缺乏具体实操，建议结合真实场景重做。</div>
+    </div>
+    <div class="empty-hint" style="padding:12px">…… 共 8 次打卡，下拉查看 Day1~Day4</div>
+  </div>
+
+  <div class="flex gap-12">
+    <button class="btn btn-primary" onclick="go('volunteer-grade')">为 Day8 打卡评改</button>
+    <button class="btn" onclick="go('volunteer-dashboard')">返回学员看板</button>
+  </div>
+</section>
+
+<!-- ===== P: MANUAL 手册管理 ===== -->
+<section class="page" data-page="manual">
+  <div class="page-header">
+    <div>
+      <div class="page-title">手册管理</div>
+      <div class="page-sub">手册文本作为 AI 规划路线 / 生成打卡 / 评改作业的参考上下文</div>
+    </div>
+    <button class="btn btn-sm" onclick="go('student-dashboard')">← 返回</button>
+  </div>
+
+  <div class="note-banner">ℹ️ 飞书手册经破局自定义域名封装，无法导出/复制。请自行通过 OCR 等方式得到文本后上传，与主流程解耦。</div>
+
+  <div class="card">
+    <div class="card-title">当前手册</div>
+    <div class="flex-between">
+      <div class="flex gap-12">
+        <div style="font-size:28px">📄</div>
+        <div>
+          <div style="font-weight:600">AI写作破局营-行动手册.md</div>
+          <div class="text-sm text-sub mt-8">上传于 2026/06/14 · 约 12,400 字 · 含 5 章节</div>
+        </div>
+      </div>
+      <div class="flex gap-8">
+        <button class="btn btn-sm">预览</button>
+        <button class="btn btn-danger btn-sm">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">上传 / 替换手册</div>
+    <div class="tab-row">
+      <div class="tab active" onclick="switchManualTab(this,'file')">上传文件</div>
+      <div class="tab" onclick="switchManualTab(this,'paste')">粘贴文本</div>
+    </div>
+    <div id="manualFile">
+      <div class="upload-zone">
+        <div style="font-size:32px">📥</div>
+        <div style="font-size:14px;margin-top:8px">点击或拖拽上传手册文本</div>
+        <div class="text-light text-sm mt-8">支持 .md / .txt 格式</div>
+      </div>
+    </div>
+    <div id="manualPaste" style="display:none">
+      <textarea class="textarea" style="min-height:160px" placeholder="将手册文本粘贴至此……"></textarea>
+      <button class="btn btn-primary mt-12">保存为手册</button>
+    </div>
+    <div class="form-hint mt-12">行动营期间手册可能更新，可随时替换。替换后建议在「学习路线」点击重新规划。</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">手册预览（前 500 字）</div>
+    <div class="muted-box text-sm" style="white-space:pre-wrap;line-height:1.7"># AI写作破局营 · 行动手册
+
+## 第一章 认知 AI 写作工作流
+本章节将带你建立对 AI 辅助写作的整体认知……
+
+## 第二章 选题方法
+好的选题是成功的一半。本章介绍 5 种选题视角……
+
+## 第三章 SCQA 框架
+情境（Situation）- 冲突（Complication）- 问题（Question）- 答案（Answer）……</div>
+  </div>
+</section>
+
+<!-- ===== P: SCORING 评分标准 ===== -->
+<section class="page" data-page="scoring">
+  <div class="page-header">
+    <div>
+      <div class="page-title">评分标准</div>
+      <div class="page-sub">全局配置 · 供 AI 评改作业时遵循，可随时调整</div>
+    </div>
+    <button class="btn btn-primary btn-sm">💾 保存</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>评分维度</span><button class="btn btn-sm">＋ 添加维度</button></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>维度</th><th>说明</th><th>是否依赖学员档案</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr><td><strong>完整度</strong></td><td>四个板块是否均填写、内容是否完整</td><td>否</td><td><button class="btn btn-sm">编辑</button></td></tr>
+          <tr><td><strong>行动真实性</strong></td><td>今日行动是否真实完成的具体行动，而非空泛套话</td><td>否</td><td><button class="btn btn-sm">编辑</button></td></tr>
+          <tr><td><strong>收获深度</strong></td><td>今日收获是否有具体感悟/思考，而非流水账</td><td>否</td><td><button class="btn btn-sm">编辑</button></td></tr>
+          <tr><td><strong>进步性</strong></td><td>相比该学员历史作业是否有进步/变化</td><td><span class="badge badge-blue">是</span></td><td><button class="btn btn-sm">编辑</button></td></tr>
+          <tr><td><strong>原创性</strong></td><td>是否抄袭/重复本人之前作业或他人作业</td><td><span class="badge badge-blue">是</span></td><td><button class="btn btn-sm">编辑</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>星级判定规则</span></div>
+    <div class="form-group">
+      <label class="form-label">⭐⭐⭐ 三星（有效）</label>
+      <input class="input" value="优秀：各维度均达标，收获有深度，且有明显进步/亮点">
+    </div>
+    <div class="form-group">
+      <label class="form-label">⭐⭐ 二星（有效）</label>
+      <input class="input" value="良好：基本达标，内容完整真实，无抄袭">
+    </div>
+    <div class="form-group">
+      <label class="form-label">⭐ 一星（无效）</label>
+      <input class="input" value="待改进：内容敷衍、不完整、套话、抄袭或重复之前作业">
+    </div>
+    <div class="form-hint">⚠ 有效打卡 = 星级 ≥ 2 星。修改对后续评改生效，已评改记录不回溯重评。</div>
+  </div>
+</section>
+
+<!-- ===== P: SETTINGS 接口配置 ===== -->
+<section class="page" data-page="settings">
+  <div class="page-header">
+    <div>
+      <div class="page-title">接口配置</div>
+      <div class="page-sub">破局接口鉴权与调用配置 · 全局</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>破局平台 Token</span><span class="badge badge-green">已配置</span></div>
+    <div class="form-group">
+      <label class="form-label">Authorization Token</label>
+      <input class="input" type="password" value="eyJhbGciOiJIUzI1NiIsInR5cCI6Ikplaceholdertokenvalue" placeholder="手动登录破局后，从浏览器复制 Token">
+      <div class="form-hint">所有破局接口调用统一以 <span class="kbd">Authorization</span> 请求头携带此 Token。MVP 不做自动登录，需手动更新。</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">接口地址（预留）</label>
+        <input class="input" value="https://api.poju.example.com" placeholder="破局接口基础地址">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Token 状态</label>
+        <div class="input" style="display:flex;align-items:center;background:#fafbfc"><span class="badge badge-green">● 正常</span><span class="text-sm text-sub" style="margin-left:8px">上次校验 06/19 09:00</span></div>
+      </div>
+    </div>
+    <div class="flex gap-12 mt-12">
+      <button class="btn btn-primary">保存配置</button>
+      <button class="btn" onclick="alert('正在测试连接……\n✓ 拉取学员打卡接口正常\n✓ 作业打分接口正常')">测试连接</button>
+    </div>
+    <div class="form-hint mt-8">⚠ Token 可能过期。调用接口遇 401 时，平台会提示"Token 可能已失效，请更新"。</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">接口能力清单（待补充完整定义）</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>接口</th><th>类型</th><th>用途</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>拉取学员打卡记录</td><td><span class="badge badge-blue">读</span></td><td>志愿者看板数据同步</td><td><span class="badge badge-green">已验证</span></td></tr>
+          <tr><td>给学员作业打分和评价</td><td><span class="badge badge-orange">写</span></td><td>评改结果同步破局</td><td><span class="badge badge-green">已验证</span></td></tr>
+          <tr><td>提交学员打卡</td><td><span class="badge badge-orange">写</span></td><td>学员自动提交打卡</td><td><span class="badge badge-gray">待确认</span></td></tr>
+          <tr><td>读取学员自身打卡进度</td><td><span class="badge badge-blue">读</span></td><td>学员看板打卡进度展示</td><td><span class="badge badge-gray">待确认</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="form-hint mt-12">最新版志愿者看板接口开放后，在此补充完整字段定义。</div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+function go(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.camp-head').forEach(n=>n.classList.remove('active'));
+  // 标记对应侧边栏
+  const map={home:'home',scoring:'scoring',settings:'settings',
+    'student-dashboard':'student-dashboard','student-route':'student-route','student-checkin':'student-checkin',
+    'volunteer-dashboard':'volunteer-dashboard','volunteer-grade':'volunteer-grade','volunteer-archive':'volunteer-archive',manual:'manual'};
+  window.scrollTo(0,0);
+}
+function selectCamp(type){
+  document.querySelectorAll('.camp-head').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.camp-children').forEach(n=>n.style.display='none');
+  if(type==='student'){
+    document.querySelector('.camp-head').classList.add('active');
+    event.target.closest('.camp-group').querySelector('.camp-children').style.display='block';
+  }else{
+    document.querySelectorAll('.camp-head')[1].classList.add('active');
+    document.getElementById('volunteer-children').style.display='block';
+  }
+}
+function pickRole(el){
+  document.querySelectorAll('.role-option').forEach(o=>o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function calcMin(){
+  const total=document.querySelector('input[type=number]').value;
+  document.getElementById('minDays').value=Math.round(total*0.6);
+}
+function toggleSwitch(id){
+  const s=document.getElementById(id);
+  s.classList.toggle('on');
+  const hint=document.getElementById('submitHint');
+  const btn=document.getElementById('submitBtn');
+  if(s.classList.contains('on')){
+    hint.textContent='当前为自动提交：点击后将调用破局接口自动提交打卡。';
+    btn.textContent='确认并自动提交';
+  }else{
+    hint.textContent='当前为手动提交：点击后将内容复制到剪贴板，请粘贴到破局打卡页面。';
+    btn.textContent='复制内容 / 提交';
+  }
+}
+function generateCheckin(){
+  const status=document.getElementById('genStatus');
+  status.textContent='生成中…';status.className='badge badge-orange';
+  setTimeout(()=>{
+    status.textContent='已生成';status.className='badge badge-green';
+  },700);
+}
+function submitCheckin(){
+  const s=document.getElementById('autoSubmitSwitch');
+  if(s.classList.contains('on')) alert('已调用破局接口自动提交打卡 ✓');
+  else alert('打卡内容已复制到剪贴板，请粘贴到破局打卡页面 ✓');
+}
+function pickStar(n){
+  const stars=document.querySelectorAll('#starPick .s');
+  const labels={1:'一星 · 无效打卡',2:'二星 · 有效打卡',3:'三星 · 有效打卡'};
+  stars.forEach((s,i)=>s.classList.toggle('on',i<n));
+  document.getElementById('starLabel').textContent=labels[n];
+}
+function toggleCollapse(id){
+  document.getElementById(id).classList.toggle('open');
+}
+function switchManualTab(el,tab){
+  el.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('manualFile').style.display=tab==='file'?'block':'none';
+  document.getElementById('manualPaste').style.display=tab==='paste'?'block':'none';
+}
+</script>
+</body>
+</html>
