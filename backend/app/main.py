@@ -40,6 +40,16 @@ async def lifespan(app: FastAPI):
         logger.warning("调度器初始化失败（忽略，后端继续运行）: %s", exc)
 
     yield
+
+    # 关闭调度器（若已启动）
+    try:
+        import app.scheduler.scheduler as _sched_mod
+
+        if _sched_mod.scheduler is not None and _sched_mod.scheduler.running:
+            _sched_mod.scheduler.shutdown(wait=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("调度器关闭失败（忽略）: %s", exc)
+
     logger.info("应用关闭")
 
 
