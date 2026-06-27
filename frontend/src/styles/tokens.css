@@ -1,0 +1,73 @@
+/* design tokens，对齐 design.md 4.1 配色与 4.3 字号 */
+:root {
+  /* 颜色 */
+  --primary: #4f46e5;
+  --primary-light: #eef2ff;
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+
+  --text: #1f2937;
+  --text-sub: #6b7280;
+  --text-light: #9ca3af;
+
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --star: #f59e0b;
+
+  --student-bg: #dbeafe;
+  --student-fg: #1d4ed8;
+  --volunteer-bg: #fce7f3;
+  --volunteer-fg: #be185d;
+
+  /* 圆角 */
+  --radius-card: 10px;
+  --radius-sm: 6px;
+  --radius-pill: 10px;
+
+  /* 字号 */
+  --fs-title: 20px;
+  --fs-card-title: 14px;
+  --fs-body: 14px;
+  --fs-sub: 13px;
+  --fs-badge: 11px;
+
+  /* 阴影 */
+  --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-hover: 0 4px 12px rgba(16, 24, 40, 0.10);
+}
+
+/* 基础重置 */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  font-size: var(--fs-body);
+  color: var(--text);
+  background: var(--bg);
+}
+
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* 公共工具类 */
+.flex {
+  display: flex;
+}
+.flex-1 {
+  flex: 1;
+}
+.muted {
+  color: var(--text-sub);
+}
