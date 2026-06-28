@@ -416,7 +416,7 @@ function StudentTable({ loading, data, campId, minDays }: StudentTableProps) {
               </Button>
             </Link>
           ) : (
-            <Link to={`/volunteer/archive/${row.id}`}>
+            <Link to={`/camp/${campId}/volunteer/archive/${row.id}`}>
               <Button size="small" icon={<FileTextOutlined />}>
                 查看档案
               </Button>
@@ -424,7 +424,7 @@ function StudentTable({ loading, data, campId, minDays }: StudentTableProps) {
           )}
           {/* 已达标 / 未达标也可点击档案查看完整历史 */}
           {row.status === 'ongoing' && (
-            <Link to={`/volunteer/archive/${row.id}`}>
+            <Link to={`/camp/${campId}/volunteer/archive/${row.id}`}>
               <Button size="small">档案</Button>
             </Link>
           )}
