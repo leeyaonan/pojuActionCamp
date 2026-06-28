@@ -17,7 +17,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import (
+    PojuApiError,
+    PojuAuthError,
+    PojuNetworkError,
+    PojuNotAvailable,
+    ValidationError,
+)
 from app.models.settings import PojuConfig
 from app.poju.client import PojuClient
 from app.schemas.settings import ConnectionResult, PojuConfigOut
@@ -142,82 +148,86 @@ class SettingsService:
         await self.session.refresh(config)
         return self._to_out(config)
 
-    async def update_base_url(self, base_url: str) -> PojuConfigOut:
-        """更新 base_url（供后续 /test 校验使用，本任务不暴露 API）。"""
+    async def update_base_url(self, base_url: str | None) -> PojuConfigOut:
+        """更新 base_url（公开方法，供 settings router 调用）。
+
+        置空时传入 ``None``，表示清除当前 base_url。
+        """
         config = await self._get_or_create_config()
-        config.base_url = base_url
+        # 统一去尾部斜杠，去除首尾空白
+        normalized = (base_url or "").strip()
+        config.base_url = normalized or None
         await self.session.commit()
         await self.session.refresh(config)
         return self._to_out(config)
 
     async def test_connection(self) -> ConnectionResult:
-        """使用当前 base_url + 解密 Token 调 PojuClient.verify_token()。
+        """使用当前 base_url + 解密 Token 调 PojuClient.fetch_checkin_records()。
 
-        Returns:
-            ConnectionResult(valid, message, last_checked_at)
-            - base_url 未配置：valid=False, message='未配置接口地址'
-            - Token 未配置：valid=False, message='未配置 Token'
-            - Token 解密失败：valid=False, message=错误说明
-            - 调用成功：valid=True / False 由 verify_token() 决定
+        业务失败时直接 raise 异常（由全局处理器映射为业务错误码），
+        前端响应拦截器即可识别失败，不再依赖 ``data.valid`` 二次判断。
+
+        - base_url 缺失：raise ValidationError → code=1001
+        - Token 缺失：raise ValidationError → code=1001
+        - Token 解密失败：raise ValidationError → code=1001
+        - Token 失效（401/403）：raise PojuAuthError → code=2001
+        - 网络错误：raise PojuNetworkError → code=2002
+        - 接口业务错误：raise PojuApiError → code=2002
+        - 接口 pending：raise PojuNotAvailable → code=2003
+        - 成功：return ConnectionResult(valid=True, message="连接成功")
         """
         config = await self._get_or_create_config()
         base_url = (config.base_url or "").strip()
         if not base_url:
-            config.token_status = "unknown"
-            config.last_checked_at = datetime.now(timezone.utc)
-            await self.session.commit()
-            return ConnectionResult(
-                valid=False,
-                message="未配置接口地址",
-                last_checked_at=config.last_checked_at,
-            )
+            # BUG-CFG-001：用 raise 替代 return valid:false，让前端能在拦截器识别
+            raise ValidationError("请先在配置中填写接口地址（base_url）")
 
         if not config.token:
-            config.last_checked_at = datetime.now(timezone.utc)
-            await self.session.commit()
-            return ConnectionResult(
-                valid=False,
-                message="未配置 Token",
-                last_checked_at=config.last_checked_at,
-            )
+            raise ValidationError("请先在配置中填写 Token")
 
         # 解密 Token
         try:
             plaintext = self._decrypt_token(config.token)
-        except ValidationError as exc:
-            config.token_status = "invalid"
-            config.last_checked_at = datetime.now(timezone.utc)
-            await self.session.commit()
-            return ConnectionResult(
-                valid=False,
-                message=exc.message,
-                last_checked_at=config.last_checked_at,
-            )
+        except ValidationError:
+            # 解密失败原样抛（已经是 ValidationError），由全局处理器映射为 1001
+            raise
 
-        # 调用 PojuClient 探测
+        # 调用 PojuClient 探测：直接调 fetch_checkin_records 让异常上抛
+        # （verify_token 会吞所有异常返 False，导致无法区分错误类型）
         client = PojuClient(base_url=base_url, token=plaintext)
         try:
-            valid = await client.verify_token()
-        except Exception as exc:  # noqa: BLE001
-            # 网络/业务异常统一视为 invalid，由 message 反映
-            logger.warning("测试连接异常: %s", exc)
-            config.token_status = "invalid"
-            config.last_checked_at = datetime.now(timezone.utc)
-            await self.session.commit()
+            try:
+                await client.fetch_checkin_records()
+                valid = True
+            except PojuAuthError:
+                # Token 失效：让全局处理器映射为 2001
+                config.token_status = "invalid"
+                config.last_checked_at = datetime.now(timezone.utc)
+                await self.session.commit()
+                raise
+            except PojuNotAvailable:
+                # 接口 pending：让全局处理器映射为 2003
+                config.token_status = "unknown"
+                config.last_checked_at = datetime.now(timezone.utc)
+                await self.session.commit()
+                raise
+            except (PojuApiError, PojuNetworkError) as exc:
+                # 网络/业务错误：记录状态并上抛 → 2002
+                config.token_status = "invalid"
+                config.last_checked_at = datetime.now(timezone.utc)
+                await self.session.commit()
+                logger.warning("测试连接异常: %s", exc)
+                raise
+        finally:
             await client.close()
-            return ConnectionResult(
-                valid=False,
-                message=f"测试连接失败：{exc}",
-                details=str(exc)[:500],
-                last_checked_at=config.last_checked_at,
-            )
 
-        config.token_status = "valid" if valid else "invalid"
+        # 成功：更新状态字段后返回
+        config.token_status = "valid"
         config.last_checked_at = datetime.now(timezone.utc)
         await self.session.commit()
-        await client.close()
         return ConnectionResult(
-            valid=valid,
-            message="连接成功" if valid else "Token 无效或连接失败",
+            valid=True,
+            message="连接成功",
+            details=None,
             last_checked_at=config.last_checked_at,
         )

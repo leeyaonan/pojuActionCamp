@@ -29,6 +29,20 @@ export function useUpdateToken() {
   });
 }
 
+/** 更新 base_url */
+export function useUpdateBaseUrl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (baseUrl: string | null) => settingsApi.updatePojuBaseUrl(baseUrl),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: settingsKeys.poju });
+    },
+    onError: (err) => {
+      toastOnBizError(err);
+    },
+  });
+}
+
 /** 测试连接 */
 export function useTestConnection() {
   const qc = useQueryClient();

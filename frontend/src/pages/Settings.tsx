@@ -24,7 +24,12 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import StatusTag from '@/components/Tag';
-import { usePojuConfig, useTestConnection, useUpdateToken } from '@/hooks/useSettings';
+import {
+  usePojuConfig,
+  useTestConnection,
+  useUpdateBaseUrl,
+  useUpdateToken,
+} from '@/hooks/useSettings';
 import type { TokenStatus } from '@/api/types';
 
 const { Title, Text } = Typography;
@@ -104,6 +109,7 @@ export default function Settings() {
   const { message } = App.useApp();
   const configQuery = usePojuConfig();
   const updateToken = useUpdateToken();
+  const updateBaseUrl = useUpdateBaseUrl();
   const testConnection = useTestConnection();
 
   const [token, setToken] = useState<string>('');
@@ -129,8 +135,13 @@ export default function Settings() {
       return;
     }
     try {
+      // 顺序：先 base_url，再 token（base_url 失败时不应继续）
+      const serverBaseUrl = config?.base_url ?? '';
+      if (baseUrl !== serverBaseUrl) {
+        await updateBaseUrl.mutateAsync(baseUrl.trim() || null);
+      }
       await updateToken.mutateAsync(token);
-      message.success('Token 已保存');
+      message.success('配置已保存');
       setToken('');
       setTokenTouched(false);
     } catch {
@@ -285,7 +296,7 @@ export default function Settings() {
             <Button
               type="primary"
               onClick={handleSave}
-              loading={updateToken.isPending}
+              loading={updateToken.isPending || updateBaseUrl.isPending}
               disabled={!token}
             >
               保存配置
