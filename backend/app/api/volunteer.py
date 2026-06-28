@@ -6,6 +6,7 @@
 - GET  /camps/{id}/grades/pending 待评改列表
 - POST /grades/generate           生成评改
 - POST /grades/confirm            确认并同步
+- POST /grades/save-draft         仅保存评改（不同步破局）— BUG-VOL-006
 - POST /grades/{id}/retry         重试同步
 - POST /grades/regenerate         重新生成评改
 """
@@ -15,6 +16,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -179,6 +181,35 @@ async def confirm_grade(
 ) -> dict:
     """写入最终评改并尝试同步破局；同步失败时本地评改保留，可重试。"""
     result: SyncResult = await service.confirm_and_sync(
+        checkin_id=payload.checkin_id,
+        stars=payload.stars,
+        comment=payload.comment,
+    )
+    return success(result.model_dump(mode="json"))
+
+
+class GradeSaveDraftIn(BaseModel):
+    """仅保存评语（不调破局）请求体。"""
+
+    checkin_id: int = Field(..., gt=0)
+    stars: int = Field(..., ge=1, le=3)
+    comment: Optional[str] = None
+
+
+@router.post(
+    "/grades/save-draft",
+    response_model=None,
+    summary="仅保存评语（不同步破局）",
+)
+async def save_grade_draft(
+    payload: GradeSaveDraftIn,
+    service: GradingService = Depends(_grading_service),
+) -> dict:
+    """仅落本地 Grade 表 + CheckinRecord，不调破局同步。
+
+    用于"仅保存不同步"按钮（BUG-VOL-006）。
+    """
+    result: SyncResult = await service.save_draft_only(
         checkin_id=payload.checkin_id,
         stars=payload.stars,
         comment=payload.comment,

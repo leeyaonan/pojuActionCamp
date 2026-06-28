@@ -6,7 +6,6 @@ import {
   Collapse,
   Empty,
   Input,
-  Modal,
   Skeleton,
   Space,
   Spin,
@@ -31,6 +30,7 @@ import {
   useGradeDraft,
   usePendingGrades,
   useRegenerateGrade,
+  useSaveGradeDraft,
   volunteerKeys,
 } from '@/hooks/useVolunteer';
 import { useQueryClient } from '@tanstack/react-query';
@@ -103,6 +103,7 @@ export default function VolunteerGrading() {
   const generateMutation = useGenerateGrade();
   const regenerateMutation = useRegenerateGrade();
   const confirmMutation = useConfirmGrade(campId);
+  const saveDraftMutation = useSaveGradeDraft(campId);
 
   // 当前选中的待评改项
   const currentItem = useMemo<PendingGradeOut | undefined>(() => {
@@ -186,25 +187,16 @@ export default function VolunteerGrading() {
         }
       );
     } else {
-      // 仅保存不同步：MVP 用本地状态 + toast 提示（后端暂无独立"保存草稿"接口）
-      // 通过 confirm 接口降级：实际也调用 confirm，但不期望同步成功
-      Modal.confirm({
-        title: '仅保存不同步',
-        content:
-          'MVP 暂未提供"仅保存"接口，确认后会尝试同步到破局；如需降级请在接口配置页关闭 Token。是否继续？',
-        okText: '继续调用接口',
-        cancelText: '取消',
-        onOk: () => {
-          confirmMutation.mutate(
-            { checkin_id: selectedCheckinId, stars, comment },
-            {
-              onSuccess: (res) => {
-                message.info(res.success ? '已同步' : `已尝试保存：${res.message}`);
-              },
-            }
-          );
-        },
-      });
+      // 仅保存不同步：调 POST /api/volunteer/grades/save-draft（不调破局）— BUG-VOL-006
+      saveDraftMutation.mutate(
+        { checkin_id: selectedCheckinId, stars, comment },
+        {
+          onSuccess: (res) => {
+            message.success(res.message || '已保存到本地（未同步破局）');
+          },
+          // onError 由 hook toastOnBizError 处理
+        }
+      );
     }
   };
 
@@ -335,6 +327,7 @@ export default function VolunteerGrading() {
               onRegenerate={handleRegenerate}
               onConfirm={handleConfirm}
               confirming={confirmMutation.isPending}
+              saveDrafting={saveDraftMutation.isPending}
             />
           )}
         </div>
@@ -407,6 +400,7 @@ function GradingDetail({
   onRegenerate,
   onConfirm,
   confirming,
+  saveDrafting,
 }: {
   item: PendingGradeOut;
   campId: number;
@@ -419,6 +413,7 @@ function GradingDetail({
   onRegenerate: () => void;
   onConfirm: (sync: boolean) => void;
   confirming: boolean;
+  saveDrafting: boolean;
 }) {
   // 学员档案：用于"历史档案参考"
   const [archive, setArchive] = useState<StudentArchive | null>(null);
@@ -752,7 +747,7 @@ function GradingDetail({
               </Button>
               <Button
                 icon={<SaveOutlined />}
-                loading={confirming}
+                loading={saveDrafting}
                 onClick={() => onConfirm(false)}
                 style={{ borderRadius: 6 }}
               >

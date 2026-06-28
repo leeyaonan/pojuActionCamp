@@ -3,6 +3,7 @@ import type {
   GradeConfirmIn,
   GradeDraftOut,
   GradeGenerateIn,
+  GradeSaveDraftIn,
   PendingGradeOut,
   StudentArchive,
   StudentStatus,
@@ -19,6 +20,7 @@ import type {
  * - GET  /api/volunteer/camps/{id}/grades/pending    待评改列表
  * - POST /api/volunteer/grades/generate              生成评改
  * - POST /api/volunteer/grades/confirm               确认并同步
+ * - POST /api/volunteer/grades/save-draft            仅保存（不同步破局）— BUG-VOL-006
  * - POST /api/volunteer/grades/{checkinId}/retry     重试同步
  * - POST /api/volunteer/grades/regenerate            重新生成评改
  */
@@ -47,6 +49,10 @@ export function generateGrade(payload: GradeGenerateIn) {
 
 export function confirmGrade(payload: GradeConfirmIn) {
   return http.post<SyncResult>('/volunteer/grades/confirm', payload).then((r) => r.data);
+}
+
+export function saveGradeDraft(payload: GradeSaveDraftIn) {
+  return http.post<SyncResult>('/volunteer/grades/save-draft', payload).then((r) => r.data);
 }
 
 export function retryGradeSync(checkinId: number) {

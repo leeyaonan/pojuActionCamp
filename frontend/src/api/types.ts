@@ -247,6 +247,12 @@ export interface GradeConfirmIn {
   comment?: string;
 }
 
+export interface GradeSaveDraftIn {
+  checkin_id: number;
+  stars: number; // 1-3
+  comment?: string;
+}
+
 export interface GradeDraftOut {
   checkin_id: number;
   stars: number;

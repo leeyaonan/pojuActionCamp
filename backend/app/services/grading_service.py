@@ -277,6 +277,68 @@ class GradingService:
         )
 
     # ------------------------------------------------------------------
+    # 仅保存（不同步破局）— BUG-VOL-006
+    # ------------------------------------------------------------------
+    async def save_draft_only(
+        self,
+        checkin_id: int,
+        stars: int,
+        comment: Optional[str],
+    ) -> SyncResult:
+        """仅保存评改到本地（不调破局同步）。
+
+        - 写入 Grade（source 判定同 confirm_and_sync：与最近一次 ai 草稿一致
+          沿用 'ai'，否则 'manual' 或 'confirmed'）。
+        - 更新 CheckinRecord(stars, grade_status='graded', synced_to_poju=False)。
+        - 不调 _sync_grade_to_poju。
+        """
+        if stars < 1 or stars > 3:
+            raise ValidationError("stars 必须在 1-3 之间")
+
+        record = await self._get_checkin(checkin_id)
+
+        # 与 confirm_and_sync 一致：基于最近一次 ai 草稿判定 source
+        last_ai_stmt = (
+            select(Grade)
+            .where(
+                Grade.checkin_record_id == checkin_id,
+                Grade.source == "ai",
+            )
+            .order_by(Grade.id.desc())
+            .limit(1)
+        )
+        last_ai = (await self.session.execute(last_ai_stmt)).scalars().first()
+        if last_ai is not None and last_ai.stars == stars and (last_ai.comment or "") == (comment or ""):
+            source = "ai"
+        else:
+            source = "manual" if last_ai is None else "confirmed"
+
+        grade = Grade(
+            checkin_record_id=checkin_id,
+            stars=stars,
+            comment=comment,
+            dimension_scores=None,
+            ai_raw_output=None,
+            source=source,
+        )
+        self.session.add(grade)
+        await self.session.flush()
+
+        # 更新 CheckinRecord（不调破局）
+        record.stars = stars
+        record.grade_status = "graded"
+        record.synced_to_poju = False
+        record.synced_at = None
+        await self.session.commit()
+        await self.session.refresh(record)
+
+        return SyncResult(
+            success=True,
+            message="已保存本地（未同步破局）",
+            synced_at=None,
+        )
+
+    # ------------------------------------------------------------------
     # 重试同步
     # ------------------------------------------------------------------
     async def retry_sync(self, checkin_id: int) -> SyncResult:

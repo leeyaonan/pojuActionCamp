@@ -119,6 +119,23 @@ export function useConfirmGrade(campId: number) {
   });
 }
 
+/** 仅保存评改（不同步破局）— BUG-VOL-006 */
+export function useSaveGradeDraft(campId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GradeConfirmIn) => volunteerApi.saveGradeDraft(payload),
+    onSuccess: (_data, vars) => {
+      // 评改已落本地，清草稿 cache 并刷新待评改列表
+      qc.removeQueries({ queryKey: volunteerKeys.gradeDraft(vars.checkin_id) });
+      qc.invalidateQueries({ queryKey: volunteerKeys.pending(campId) });
+      qc.invalidateQueries({ queryKey: volunteerKeys.students(campId) });
+    },
+    onError: (err) => {
+      toastOnBizError(err);
+    },
+  });
+}
+
 /** 重试评改同步 */
 export function useRetryGradeSync(campId: number) {
   const qc = useQueryClient();
