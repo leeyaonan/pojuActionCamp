@@ -39,13 +39,13 @@ import type { DayTaskOut } from '@/api/types';
  *   · 已完成（is_completed）灰显
  *   · 每行右侧：编辑按钮；今天额外"去打卡"按钮
  * - 编辑 Modal：title / description / tags（字符串数组）
- * - 重新规划 Modal：keep_edits 默认勾选
+ * - 重新规划：点击 → modal.confirm 二次确认 → 调 API
  * - 未生成路线：空状态 + "生成学习路线"按钮
  */
 export default function StudentRoute() {
   const params = useParams<{ id: string }>();
   const campId = Number(params.id);
-  const { message } = App.useApp();
+  const { modal, message } = App.useApp();
 
   const { data: camp } = useCamp(Number.isFinite(campId) ? campId : undefined);
   const { data: route, isLoading } = useRoute(Number.isFinite(campId) ? campId : undefined);
@@ -61,10 +61,6 @@ export default function StudentRoute() {
     description?: string;
     tagsText?: string;
   }>();
-
-  // 重新规划 Modal 状态
-  const [regenOpen, setRegenOpen] = useState(false);
-  const [keepEdits, setKeepEdits] = useState(true);
 
   // 排序后的任务列表
   const sortedTasks = useMemo(() => {
@@ -120,14 +116,25 @@ export default function StudentRoute() {
   };
 
   // ---------- 重新规划 ----------
-  const submitRegenerate = async () => {
-    try {
-      await regenerateRoute.mutateAsync(keepEdits);
-      message.success('已重新规划');
-      setRegenOpen(false);
-    } catch {
-      // 已由 hook 内部 toast
-    }
+  // BUG-STU-010: 点击先弹确认对话框，避免意外覆盖已编辑任务。
+  const handleRegenerateClick = () => {
+    modal.confirm({
+      title: '重新规划学习路线',
+      content:
+        '将基于手册重新生成每日任务。会覆盖 AI 自动生成的部分。是否继续？',
+      okText: '继续生成',
+      cancelText: '取消',
+      okButtonProps: { loading: regenerateRoute.isPending },
+      onOk: async () => {
+        try {
+          // 默认保留已编辑内容（与原 keepEdits=true 行为一致，避免误覆盖用户编辑）
+          await regenerateRoute.mutateAsync(true);
+          message.success('已重新生成学习路线');
+        } catch {
+          // 已由 hook 内部 toast
+        }
+      },
+    });
   };
 
   // ---------- 生成 ----------
@@ -178,7 +185,7 @@ export default function StudentRoute() {
         <div style={{ display: 'flex', gap: 8 }}>
           <Button
             icon={<ReloadOutlined />}
-            onClick={() => setRegenOpen(true)}
+            onClick={handleRegenerateClick}
             disabled={!hasRoute}
           >
             重新规划
@@ -306,47 +313,6 @@ export default function StudentRoute() {
             <Input placeholder="如：手册第3章、SCQA、改写" />
           </Form.Item>
         </Form>
-      </Modal>
-
-      {/* 重新规划 Modal */}
-      <Modal
-        open={regenOpen}
-        title="重新规划学习路线"
-        onCancel={() => setRegenOpen(false)}
-        onOk={submitRegenerate}
-        okText="确认重新规划"
-        cancelText="取消"
-        confirmLoading={regenerateRoute.isPending}
-        okButtonProps={{ danger: false }}
-        destroyOnClose
-      >
-        <div style={{ color: 'var(--text-sub)', fontSize: 13, marginBottom: 12 }}>
-          将基于手册重新生成每日任务。会覆盖 AI 自动生成的部分。
-        </div>
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: 10,
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)',
-            cursor: 'pointer',
-            background: keepEdits ? 'var(--primary-light)' : 'var(--surface)',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={keepEdits}
-            onChange={(e) => setKeepEdits(e.target.checked)}
-          />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>保留我已编辑的内容</div>
-            <div style={{ fontSize: 12, color: 'var(--text-sub)' }}>
-              勾选后，你手动改过的日期不会被覆盖（默认勾选）
-            </div>
-          </div>
-        </label>
       </Modal>
     </div>
   );
