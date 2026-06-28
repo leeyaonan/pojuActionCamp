@@ -1,0 +1,8 @@
+=== BUG-51: test_connection with 401 (PojuAuthError) ===
+{"code":0,"message":"ok","data":{"valid":false,"message":"Token 无效或连接失败","details":null,"last_checked_at":"2026-06-28T02:34:56.144302Z"}}
+HTTP=200
+
+=== BUG-52: sync with 401 ===
+{"code":2001,"message":"破局 Token 失效（HTTP 401），请到接口配置更新","data":null}
+HTTP=401
+

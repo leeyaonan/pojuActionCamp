@@ -24,3 +24,8 @@ data/
 # IDE
 .vscode/
 .idea/
+
+# 本地工具产物
+.playwright-mcp/
+*.png
+!test-reports/screenshots/**/*.png

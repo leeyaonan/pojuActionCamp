@@ -1,0 +1,27 @@
+=== BUG-73: 并发编辑同一 task ===
+task_id=none
+route_camp=4
+=== 准备: 给 camp 4 上传 manual 然后生成 route ===
+{"code":0,"message":"ok","data":{"id":4,"camp_id":4,"filename":"manual_paste.md","file_path":"data/manuals/4/manual_paste.md","content":"SCQA 框架是结构化表达的核心方法。包含情境、�
+=== BUG-74: update 不存在的 task_id ===
+{"code":1002,"message":"DayTask 99999 不存在","data":null}
+HTTP=404
+
+=== BUG-75: update task 缺字段 ===
+{"code":0,"message":"ok","data":{"id":1,"route_id":1,"day_number":1,"title":"Day 1: SCQA 框架 - 增强版","description":"深入理解 SCQA 框架并实践","tags":[{"name":"沟通","label":"30min"}],"is_completed":false,"edited":true,"created_at":"2026-06-28T10:00:00","updated_at":"2026-06-28T02:
+=== BUG-76: today 接口在已删 camp 上 ===
+{"code":1002,"message":"行动营 2 不存在","data":null}
+HTTP=404
+
+=== BUG-77: today 接口传非法日期 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-78: today 接口传远未来日期 ===
+{"code":0,"message":"ok","data":{"day_number":null,"task":null,"progress":1.0}}
+HTTP=200
+
+=== BUG-79: today 接口传远过去日期 ===
+{"code":0,"message":"ok","data":{"day_number":null,"task":null,"progress":0.0}}
+HTTP=200
+

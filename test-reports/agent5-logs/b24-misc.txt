@@ -1,0 +1,34 @@
+=== BUG-104: CORS 预检 OPTIONS ===
+HTTP/1.1 200 OK
+date: Sun, 28 Jun 2026 02:49:37 GMT
+server: uvicorn
+vary: Origin
+access-control-allow-methods: DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT
+access-control-max-age: 600
+access-control-allow-credentials: true
+access-control-allow-origin: http://localhost:5173
+access-control-allow-headers: content-type
+content-length: 2
+content-type: text/plain; charset=utf-8
+
+
+HTTP=200
+
+=== BUG-105: POST 到 list 端点 (GET only) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-106: 异常 Content-Type ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-107: extra unknown field ===
+{"code":0,"message":"ok","data":{"name":"X","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":42,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:49:37","updated_at":"2026-06-28T02:49:37"}}
+HTTP=200
+
+查 is_deleted 是否被设置
+{'id': 42, 'name': 'X', 'role': 'student', 'total_days': 5, 'start_date': '2026-06-28', 'end_date': '2026-07-02', 'min_checkin_days': 1, 'status': 'ongoing', 'current_day': 1, 'valid_days': 0, 'progress': 0.2, 'created_at': '2026-06-28T02:49:37'}
+=== BUG-108: with id 字段（不期望） ===
+{"code":0,"message":"ok","data":{"name":"id-injection","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":43,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:49:37","updated_at":"2026-06-28T02:49:37"}}
+HTTP=200
+

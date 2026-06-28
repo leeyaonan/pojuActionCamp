@@ -1,0 +1,37 @@
+=== BUG-57: 上传超大文件 (10MB) ===
+{"code":0,"message":"ok","data":{"id":5,"camp_id":11,"filename":"big.txt","file_path":"data/manuals/11/manual.txt","content":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+=== BUG-58: 上传 .exe 文件 ===
+{"code":1001,"message":"仅支持 .md/.txt 格式，当前: .exe","data":null}
+HTTP=400
+
+=== BUG-59: 上传 .py 文件 ===
+{"code":1001,"message":"仅支持 .md/.txt 格式，当前: .py","data":null}
+HTTP=400
+
+=== BUG-60: 上传 .pdf 文件 ===
+{"code":1001,"message":"仅支持 .md/.txt 格式，当前: .pdf","data":null}
+HTTP=400
+
+=== BUG-61: 上传 .docx 文件 ===
+{"code":1001,"message":"仅支持 .md/.txt 格式，当前: .docx","data":null}
+HTTP=400
+
+=== BUG-62: 上传到不存在的 camp_id ===
+{"code":0,"message":"ok","data":{"id":7,"camp_id":99999,"filename":"manual.md","file_path":"data/manuals/99999/manual.md","content":"test content\n","word_count":2,"uploaded_at":"2026-06-28T02:35:46.571976","created_at":"2026-06-28T02:35:46","updated_at":"2026-06-28T02:35:46"}}
+HTTP=200
+
+=== BUG-63: 上传无文件 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-64: paste 超长 1MB 文本 ===
+/tmp/a5_b17.sh: line 40: /usr/bin/curl: Argument list too long
+
+=== BUG-65: paste 空 content ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-66: delete 不存在 camp 的 manual ===
+{"code":0,"message":"ok","data":{"camp_id":99999,"deleted":true}}
+HTTP=200
+

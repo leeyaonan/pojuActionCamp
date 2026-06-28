@@ -1,0 +1,33 @@
+Using checkin_id=6
+=== BUG-37: 评改 stars=0 (越界) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-38: 评改 stars=4 (越界) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-39: 评改 stars=-1 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-40: 评改 stars=2 合法 ===
+{"code":0,"message":"ok","data":{"success":false,"message":"评改已保存本地；同步破局失败，可稍后重试","synced_at":null}}
+HTTP=200
+
+=== BUG-44: 评改超长 comment 10000 字符 ===
+{"code":0,"message":"ok","data":{"success":false,"message":"评改已保存本地；同步破局失败，可稍后重试","synced_at":null}}
+HTTP=200
+
+=== BUG-45: 评改空 comment ===
+{"code":0,"message":"ok","data":{"success":false,"message":"评改已保存本地；同步破局失败，可稍后重试","synced_at":null}}
+HTTP=200
+
+=== BUG-46: 评改 checkin_id 不存在 ===
+{"code":1002,"message":"打卡记录 99999 不存在","data":null}
+HTTP=404
+
+=== BUG-47: 评改 generate 无效 checkin_id ===
+{"code":1002,"message":"打卡记录 99999 不存在","data":null}
+HTTP=404
+

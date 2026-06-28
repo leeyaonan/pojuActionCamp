@@ -1,0 +1,9 @@
+=== 检查 settings schema ===
+TokenUpdate {
+  "token": {
+    "type": "string",
+    "minLength": 1,
+    "title": "Token",
+    "description": "破局 Authorization Token(明文,由 service 加密入库)"
+  }
+}

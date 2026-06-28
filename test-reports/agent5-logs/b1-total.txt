@@ -1,0 +1,12 @@
+=== BUG-1: total_days=0 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-2: total_days=-1 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-3: total_days=999999 ===
+{"code":0,"message":"ok","data":{"name":"BUG3-totalHuge","role":"student","description":null,"total_days":999999,"start_date":"2026-06-28","end_date":"2026-07-04","min_checkin_days":1,"id":12,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:28:11","updated_at":"2026-06-28T02:28:11"}}
+HTTP=200
+=== BUG-4: total_days=30.5 (浮点) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400

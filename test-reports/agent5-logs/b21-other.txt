@@ -1,0 +1,31 @@
+=== BUG-89: regenerate route keep_edits=true 缺 manual camp ===
+{"code":3002,"message":"camp 12 未配置手册或手册内容为空","data":null}
+HTTP=503
+
+=== BUG-90: regenerate route keep_edits=false 缺 manual camp ===
+{"code":3002,"message":"camp 12 未配置手册或手册内容为空","data":null}
+HTTP=503
+
+=== BUG-91: regenerate route keep_edits=true 无 route camp ===
+Traceback (most recent call last):
+  File "/Users/rot/dev/code/pojuActionCamp/backend/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/rot/dev/code/pojuActionCamp/backend/.venv/lib/python3.13/site-packa
+=== BUG-92: get manual on camp without manual ===
+{"code":0,"message":"ok","data":{"manual":{"id":1,"camp_id":1,"filename":"manual_paste.md","file_path":"data/manuals/1/manual_paste.md","content":"# 手册\n内容","word_count":4,"uploaded_at":"2026-06-27T15:26:01.229715","created_at":"2026-06-27T15:26:01","updated_at":"2026-06-27T15:26:01"},"previ
+=== BUG-93: get manual on deleted camp (id=2 was deleted) ===
+{"code":0,"message":"ok","data":{"manual":{"id":2,"camp_id":2,"filename":"manual_paste.md","file_path":"data/manuals/2/manual_paste.md","content":"# 测试手册\n## 第一章 AI写作基础\n本章介绍 AI 写作的核心工作流。","word_count":25,"uploaded_at":"2026-06-27T15:30:17.599866","cre
+=== BUG-94: checkin list on deleted camp (id=2) ===
+{"code":1002,"message":"行动营 2 不存在","data":null}
+HTTP=404
+
+=== BUG-95: scoring PUT 空 dimensions ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-96: scoring PUT 无效 JSON ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-97: scoring GET ===
+{"code":0,"message":"ok","data":{"id":3,"dimensions":[{"key":"completeness","name":"完整度","desc":"四板块","depends_archive":false},{"key":"authenticity","name":"行动真实性","desc":"真实","depends_archive":false},{"key":"depth","name":"收获深度","desc":"深度","depends_archive":false},{"key":"progress","name":"进步性","desc":"进步","depends_archive":true},{"key":"originality","name":"原创性","desc":"原创","depends_archive":true},{"key":"creativity","name":"创新性(

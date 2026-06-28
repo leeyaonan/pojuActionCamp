@@ -1,0 +1,34 @@
+=== BUG-19: camp_id 不存在 (99999) ===
+{"code":1002,"message":"行动营 99999 不存在","data":null}
+HTTP=404
+=== BUG-20: camp_id 负数 -1 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-21: camp_id 0 (gt=0 校验) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-22: camp_id 字符串 abc ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-23: camp_id SQL injection path ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-24: list students 跨营 (id=5 志愿者营) ===
+{"code":0,"message":"ok","data":[]}
+HTTP=200
+
+=== BUG-25: list students 在学员营 (id=1) ===
+{"code":1001,"message":"camp 1 不是志愿者行动营（role=student），无法查看学员列表","data":null}
+HTTP=400
+
+=== BUG-26: 学员营调 sync ===
+{"code":1001,"message":"camp 1 不是志愿者行动营（role=student），无法同步","data":null}
+HTTP=400
+
+=== BUG-27: 学员营调 pending grades ===
+{"code":0,"message":"ok","data":[]}
+HTTP=200
+
+=== BUG-28: 学员营调 generate grade (无效 checkin_id) ===
+{"detail":"Not Found"}
+HTTP=404

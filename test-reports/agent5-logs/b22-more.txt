@@ -1,0 +1,24 @@
+=== BUG-98: list students on volunteer camp with no students ===
+23 E2E-Agent4-志愿营
+5 E2E测试-志愿者营
+
+=== BUG-99: pending grades on camp with no checkins ===
+{"code":0,"message":"ok","data":[{"checkin_id":12,"student_id":0,"student_nickname":"0","camp_id":4,"day_number":1,"checkin_date":"2026-06-28","content":"今日行动：学习 SCQA 框架。\n今日收获：理解 SCQA 框架的 4 要素。\n今日好事：完成第一天的作业。\n下一步：�
+=== BUG-100: 评改 retry on non-graded checkin ===
+{"code":1001,"message":"该记录尚未评改完成，无法重试同步","data":null}
+HTTP=400
+
+=== BUG-101: 评改 regenerate on pending checkin ===
+    For further information visit https://errors.pydantic.dev/2.13/v/model_type
+
+HTTP=500
+
+=== BUG-102: archive student 不存在 ===
+{"code":1002,"message":"学员 99999 不存在","data":null}
+HTTP=404
+
+=== BUG-103: 重复创建相同 camp name ===
+{"code":0,"message":"ok","data":{"name":"duplicate-test","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":40,"status":"ong
+{"code":0,"message":"ok","data":{"name":"duplicate-test","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":41,"status":"ong
+=== 查 ===
+duplicate count: 2

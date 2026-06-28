@@ -1,0 +1,12 @@
+=== BUG-64b: paste 1MB 文本通过文件 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-67: 重复粘贴相同 camp 的 manual 覆盖？===
+{"code":0,"message":"ok","data":{"id":5,"camp_id":11,"filename":"manual_paste.md","file_path":"data/manuals/11/manual_paste.md","content":"first paste","word_count":2,"uploaded_at":"2026-06-28T02:36:12.175132","created_at":"2026-06-28T02:29:51","updated_at":"2026-06-28T02:36:12"}}
+HTTP=200
+
+{"code":0,"message":"ok","data":{"id":5,"camp_id":11,"filename":"manual_paste.md","file_path":"data/manuals/11/manual_paste.md","content":"second paste replaces?","word_count":3,"uploaded_at":"2026-06-28T02:36:12.197420","created_at":"2026-06-28T02:29:51","updated_at":"2026-06-28T02:36:12"}}
+HTTP=20
+查
+manual_paste.md 3 {'id': 5, 'camp_id': 11, 'filename': 'manual_paste.md', 'word_count': 3, 'preview': 'second paste replaces?', 'uploaded_at': '2026-06-28T02:36:12.197420'}

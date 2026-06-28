@@ -1,0 +1,9 @@
+=== 启动一个会返回 200 的简易 server 模拟破局 ===
+=== BUG-50b: test_connection with 200 OK server ===
+{"code":0,"message":"ok","data":{"valid":true,"message":"连接成功","details":null,"last_checked_at":"2026-06-28T02:34:23.418628Z"}}
+HTTP=200
+
+=== BUG-49c: sync with 200 OK server ===
+{"code":0,"message":"ok","data":{"success":true,"message":"同步成功，新增 0 条打卡记录（共处理 0 条）","synced_at":"2026-06-28T02:34:23.440312Z"}}
+HTTP=200
+

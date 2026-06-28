@@ -1,0 +1,42 @@
+=== BUG-36: delete camp 2 then access sub-resources ===
+先获取 camp 2 详情
+{"code":0,"message":"ok","data":{"name":"AI写作破局营","role":"student","description":"测试","total_days":30,"start_date":"2026-06-15","end_date":"2026-07-14","min_checkin_days":18,"id":2,"stat
+删除
+{"code":0,"message":"ok","data":{"camp_id":2,"deleted":true}}
+HTTP=200
+访问已删 camp
+{"code":1002,"message":"行动营 2 不存在","data":null}
+HTTP=404
+访问已删 camp 子资源 - 学员端
+{"code":1002,"message":"行动营 2 不存在","data":null}
+HTTP=404
+
+访问已删 camp 子资源 - 路线
+{"code":0,"message":"ok","data":null}
+HTTP=200
+
+访问已删 camp 志愿者端
+{"code":1002,"message":"行动营 2 不存在","data":null}
+HTTP=404
+
+=== BUG-37: 评改星级越界 stars=0 ===
+{"detail":"Not Found"}
+HTTP=404
+=== BUG-38: 评改星级 stars=4 ===
+{"detail":"Not Found"}
+HTTP=404
+=== BUG-39: 评改星级 stars=-1 ===
+{"detail":"Not Found"}
+HTTP=404
+=== BUG-40: 评改星级 stars=1 (合法边界) ===
+{"detail":"Not Found"}
+HTTP=404
+
+=== BUG-41: 评改星级 stars=3 (合法边界) ===
+{"detail":"Not Found"}
+HTTP=404
+
+=== BUG-42: 评改超长 comment 10000 字符 ===
+{"detail":"Not Found"}
+HTTP=404
+

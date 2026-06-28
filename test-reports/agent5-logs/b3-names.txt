@@ -1,0 +1,19 @@
+=== BUG-13: name 1000 chars ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-14: name 101 chars (超 max_length=100) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-15: name XSS script ===
+{"code":0,"message":"ok","data":{"name":"<script>alert(1)</script>","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":18,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:28:48","updated_at":"2026-06-28T02:28:48"}}
+HTTP=200
+=== BUG-16: empty name ===
+{"code":0,"message":"ok","data":{"name":"","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":19,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:28:48","updated_at":"2026-06-28T02:28:48"}}
+HTTP=200
+=== BUG-17: missing name ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-18: desc 100000 chars ===
+{"code":0,"message":"ok","data":{"name":"BUG18-bigDesc","role":"student","description":"DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDcurl: (23) Failure writing output to destination, passed 2194 returned 0
+

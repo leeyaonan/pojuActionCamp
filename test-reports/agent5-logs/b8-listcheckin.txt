@@ -1,0 +1,43 @@
+=== 取所有 checkins ===
+count: 4
+[
+  {
+    "id": 4,
+    "student_id": 0,
+    "camp_id": 11,
+    "day_number": 1,
+    "checkin_date": "2026-06-28",
+    "content": "测试打卡内容3",
+    "images": null,
+    "submitted_at": null,
+    "poju_checkin_id": null,
+    "grade_status": "pending",
+    "stars": null,
+    "is_valid": false,
+    "synced_to_poju": false,
+    "synced_at": null,
+    "created_at": "2026-06-28T02:29:33",
+    "updated_at": "2026-06-28T02:29:33"
+  },
+  {
+    "id": 3,
+    "student_id": 0,
+    "camp_id": 11,
+    "day_number": 1,
+    "checkin_date": "2026-06-28",
+    "content": "测试打卡内容2",
+    "images": null,
+    "submitted_at": null,
+    "poju_checkin_id": null,
+    "grade_status": "pending",
+    "stars": null,
+    "is_valid": false,
+    "synced_to_poju": false,
+    "synced_at": null,
+    "created_at": "2026-06-28T02:29:33",
+    "updated_at": "2026-06-28T02:29:33"
+  }
+]
+
+=== 取志愿者营 5 的 pending grades ===
+{"code":0,"message":"ok","data":[{"checkin_id":5,"student_id":1,"student_nickname":"张三","camp_id":5,"day_number":1,"checkin_date":"2026-06-28","content":"今日行动：阅读《SCQA》开篇。今日收获：理解了情境-复杂-问题-答案结构。今日好事：与组员交流很有共鸣。下一步：写一段对话练习。","images":null,"submitted_at":null},{"checkin_id":6,"student_id":1,"student_nickname":"张三","camp_id":5,"day_number":2,"checkin_date":"2026-06-29","content":

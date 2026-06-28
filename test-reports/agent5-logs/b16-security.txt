@@ -1,0 +1,21 @@
+=== E. 安全 ===
+=== BUG-53: CORS 外部 Origin ===
+access-control-allow-credentials: true
+
+=== CORS 允许 Origin ===
+access-control-allow-credentials: true
+access-control-allow-origin: http://localhost:5173
+
+=== BUG-54: SQL 注入 name='; DROP TABLE camps; -- ===
+{"code":0,"message":"ok","data":{"name":"'; DROP TABLE camps; --","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":26,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:35:24","updated_at":"2026-06-28T02:35:24"}}
+HTTP=200
+
+=== 注入后查 camps 是否还正常 ===
+{"code":0,"message":"ok","data":[{"id":26,"name":"'; DROP TABLE camps; --","role":"student","total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"status":"ongoing","cu
+
+=== BUG-55: name UNION SELECT 注入 ===
+{"code":0,"message":"ok","data":{"name":"x' UNION SELECT 1,2,3 --","role":"student","description":null,"total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":27,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"20
+=== BUG-56: description XSS img onerror ===
+{"code":0,"message":"ok","data":{"name":"XSS-test","role":"student","description":"<img src=x onerror=alert(1)>","total_days":5,"start_date":"2026-06-28","end_date":"2026-07-02","min_checkin_days":1,"id":28,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:35:24","updated_at":"2026-06-28T02:35:24"}}
+HTTP=200
+

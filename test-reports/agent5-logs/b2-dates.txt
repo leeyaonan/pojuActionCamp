@@ -1,0 +1,24 @@
+=== BUG-5: min_checkin_days > total_days ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-6: min_checkin_days=-1 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-7: min_checkin_days=0 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-8: start_date 1970-01-01 ===
+{"code":0,"message":"ok","data":{"name":"BUG8-date1970","role":"student","description":null,"total_days":5,"start_date":"1970-01-01","end_date":"1970-01-05","min_checkin_days":1,"id":14,"status":"ended","current_day":null,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:28:24","updated_at":"2026-06-28T02:28:24"}}
+HTTP=200
+=== BUG-9: end_date 2099-12-31 ===
+{"code":0,"message":"ok","data":{"name":"BUG9-date2099","role":"student","description":null,"total_days":5,"start_date":"2099-01-01","end_date":"2099-12-31","min_checkin_days":1,"id":15,"status":"not_started","current_day":null,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:28:24","updated_at":"2026-06-28T02:28:24"}}
+HTTP=200
+=== BUG-10: end_date < start_date (倒序) ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+=== BUG-11: end_date == start_date ===
+{"code":0,"message":"ok","data":{"name":"BUG11-eqDate","role":"student","description":null,"total_days":1,"start_date":"2026-06-28","end_date":"2026-06-28","min_checkin_days":1,"id":16,"status":"ongoing","current_day":1,"valid_days":0,"has_manual":false,"has_route":false,"created_at":"2026-06-28T02:28:24","updated_at":"2026-06-28T02:28:24"}}
+HTTP=200
+=== BUG-12: illegal date 'abc' ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400

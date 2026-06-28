@@ -1,0 +1,31 @@
+=== BUG-29: 学员营调 checkin generate ===
+Traceback (most recent call last):
+  File "/Users/rot/dev/code/pojuActionCamp/backend/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/rot/dev/code/pojuActionCamp/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/rot/dev/code/pojuActionCamp/backend/app/core/response.py", line 51, in response_wrap_middleware
+    response: Response = await call_next(request)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/rot/dev/code/pojuActionCamp/backend/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/Users/rot/dev/code/pojuActionCamp/backend/.venv/lib/python3.13/site-packages/starlette/middleware/b
+=== BUG-30: 志愿者营调 checkin generate (id=5) ===
+{"code":1001,"message":"camp 5 不是学员行动营，无法生成打卡草稿","data":null}
+HTTP=400
+
+=== BUG-31: 学员营调 checkin submit (id=11) ===
+{"code":0,"message":"ok","data":{"submitted":true,"method":"manual","sync_status":"manual","poju_checkin_id":null}}
+HTTP=200
+
+=== BUG-32: 同一天提交第二次 (id=11) ===
+{"code":0,"message":"ok","data":{"submitted":true,"method":"manual","sync_status":"manual","poju_checkin_id":null}}
+HTTP=200
+
+=== BUG-33: 第三次 (id=11) ===
+{"code":0,"message":"ok","data":{"submitted":true,"method":"manual","sync_status":"manual","poju_checkin_id":null}}
+HTTP=200
+
+=== BUG-34: 列出打卡记录 ===
+{"code":0,"message":"ok","data":[{"id":4,"student_id":0,"camp_id":11,"day_number":1,"checkin_date":"2026-06-28","content":"测试打卡内容3","images":null,"submitted_at":null,"poju_checkin_id":null,"grade_status":"pending","stars":null,"is_valid":false,"synced_to_poju":false,"synced_at":null,"created_at":"2026-06-28T02:29:33","updated_at":"2026-06-28T02:29:33"},{"id":3,"student_id":0,"camp_id":11,"day_number":1,"checkin_date":"2026-06-28","content":"测试打卡内容2","images":null,"submitted_at":null,"poju_checkin_id":null,"grade_status":"pending","stars":null,"is_valid":false,"synced_to_poju":false,"synced_at":null,"created_at":"2026-06-28T02:29:33","updated_at":"2026-06-28T02:29:33"},{"id":2,"student_id":0,"camp_id":11,"day_number":1,"checkin_date":"2026-06-28","content":"测试打卡内容1","images":null,"submitted_at":null,"poju_checkin_id":null,"grade_status":"pending","stars":null,"is_valid":false,"synced_to_poju":false,"synced_at":null,"created_at":"2026-06-28T02:29:33","

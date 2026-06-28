@@ -1,0 +1,39 @@
+=== BUG-80: auto=true with bad base URL - 期望降级 manual ===
+{"code":0,"message":"ok","data":{"submitted":true,"method":"manual","sync_status":"manual","poju_checkin_id":null}}
+HTTP=200
+
+=== BUG-81: checkin generate 在没有 manual 的学员营 ===
+{"code":0,"message":"ok","data":{"today_action":"今天刚开始接触每日打卡，输入了「test」作为第一次尝试，熟悉打卡的流程和操作方式。","today_gain":"虽然只是简单的一个测试，但迈出了打卡的第一步——愿意开始记录，本身就是一种收获。明白了打卡的意义在于坚持每天的输入和反思，而不在于内容的多寡。","good_thing":"今天值得记录的小确幸：正式开启了自己的打卡之旅，第一步虽然简单，但已经迈出去啦！","next_step":"明天开始认真对待打卡，结合行动营第 1 天的安排，先了解整体的学习方向，把今天没想清楚的地方梳理清楚，写下第一条有内容的学习记录。"}}
+HTTP=200
+
+=== BUG-82: checkin generate 在已结束营 ===
+{"code":0,"message":"ok","data":{"today_action":"今天输入了\"test\"，尝试进行一次打卡记录，作为今日学习与行动的起点。","today_gain":"意识到打卡这件事本身需要一点耐心，哪怕内容很少，也是一次真实的输出和练习。","good_thing":"今天虽然只是简单记录了\"test\"这一笔，但也算是迈出了打卡的一小步，本身就值得被看见。","next_step":"明天尝试把今天的学习或行动再多写一点点，哪怕是一句话、一个小点，让打卡内容更加具体。"}}
+HTTP=200
+
+=== BUG-83: checkin generate 在未开始营 ===
+    )
+app.ai.llm_client.LLMError: LLM 调用失败，已重试 3 次: 0 validation errors for 未在响应中找到 tool_use 块
+
+
+HTTP=500
+
+=== BUG-84: checkin submit 在未开始营 (camp 15) ===
+{"code":1001,"message":"营期未开始，无法提交打卡","data":null}
+HTTP=400
+
+=== BUG-85: checkin submit 在已结束营 (camp 14) ===
+{"code":1001,"message":"营期已结束，无法提交打卡","data":null}
+HTTP=400
+
+=== BUG-86: checkin generate text 为空 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-87: checkin generate 缺 text ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+
+=== BUG-88: checkin submit content 为空 ===
+{"code":1001,"message":"参数校验失败","data":null}
+HTTP=400
+

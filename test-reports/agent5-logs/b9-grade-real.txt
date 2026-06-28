@@ -1,0 +1,21 @@
+Using checkin_id=5
+=== BUG-37: 评改 stars=0 (越界) ===
+{"detail":"Not Found"}
+HTTP=404
+
+=== BUG-38: 评改 stars=4 (越界) ===
+{"detail":"Not Found"}
+HTTP=404
+
+=== BUG-39: 评改 stars=-1 ===
+{"detail":"Not Found"}
+HTTP=404
+
+=== BUG-43: 评改 stars=2 (合法) ===
+{"detail":"Not Found"}
+HTTP=404
+
+=== BUG-44: 评改超长 comment 10000 字符 ===
+{"detail":"Not Found"}
+HTTP=404
+

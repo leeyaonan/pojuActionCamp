@@ -1,0 +1,12 @@
+=== 通过 SQLAlchemy 看是否有别处可改 base_url ===
+
+=== 直接改 base_url 通过 sqlite ===
+rows: 1
+=== BUG-49b: 假 base_url + 假 token, 触发 sync ===
+{"code":0,"message":"ok","data":{"success":true,"message":"同步成功，新增 0 条打卡记录（共处理 0 条）","synced_at":"2026-06-28T02:33:56.582810Z"}}
+HTTP=200
+
+=== BUG-50: test connection 假 URL ===
+{"code":0,"message":"ok","data":{"valid":true,"message":"连接成功","details":null,"last_checked_at":"2026-06-28T02:33:59.613981Z"}}
+HTTP=200
+

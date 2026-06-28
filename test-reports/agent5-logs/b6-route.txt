@@ -1,0 +1,13 @@
+=== 准备：上传手册 (camp 11) ===
+{"code":0,"message":"ok","data":{"id":5,"camp_id":11,"filename":"manual_paste.md","file_path":"data/manuals/11/manual_paste.md","content":"这是一本很长的手册，关于如何破局。内容覆盖多个章节与知识点。","word_count":28,"uploaded_at":"2026-06-28T02:29:51.530839","created_a
+=== BUG-35: 学员营调 generate route (无 LLM 凭证) ===
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/rot/dev/code/pojuActionCamp/backend/app/ai/llm_client.py", line 151, in chat
+    raise LLMError(
+        f"LLM 调用失败，已重试 {_MAX_RETRIES} 次: {last_err}", cause=last_err
+    )
+app.ai.llm_client.LLMError: LLM 调用失败，已重试 3 次: "Could not resolve authentication method. Expected one of api_key, auth_token, or credentials to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+
+HTTP=500

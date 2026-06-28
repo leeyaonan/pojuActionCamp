@@ -1,0 +1,18 @@
+=== 当前 PojuConfig 状态 ===
+{"code":0,"message":"ok","data":{"id":1,"token_masked":"****9999","base_url":null,"token_status":"unknown","last_checked_at":"2026-06-28T02:30:30.630555","has_token":true,"created_at":"2026-06-27T15:26:00","updated_at":"2026-06-28T02:30:30"}}
+HTTP=200
+
+
+=== BUG-48: 设置假 Token 测试 sync ===
+{"code":0,"message":"ok","data":{"id":1,"token_masked":"****2345","base_url":null,"token_status":"unknown","last_checked_at":null,"has_token":true,"created_at":"2026-06-27T15:26:00","updated_at":"2026-06-28T02:32:07"}}
+HTTP=200
+
+=== 第二次拉 ===
+{"code":0,"message":"ok","data":{"id":1,"token_masked":"****2345","base_url":null,"token_status":"unknown","last_checked_at":null,"has_token":true,"created_at":"2026-06-27T15:26:00","updated_at":"2026-06-28T02:32:07"}}
+HTTP=200
+
+=== BUG-49: 测试 sync 在 token 失效 ===
+{"code":1001,"message":"破局接口未配置（缺少 token 或 base_url）","data":null}
+HTTP=400
+
+=== BUG-50: 假 base_url ===
