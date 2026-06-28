@@ -31,6 +31,9 @@ ALLOWED_EXTS: tuple[str, ...] = (".md", ".txt")
 # 存储根目录（相对项目根）
 MANUAL_ROOT = Path("data") / "manuals"
 
+# 单文件上传最大字节数（BUG-SEC-001：防 DoS）
+MAX_MANUAL_BYTES = 5 * 1024 * 1024  # 5 MB
+
 # CJK Unicode 区段：基本汉字 + 扩展（粗略覆盖常见字）
 _CJK_PATTERN = re.compile(
     r"[一-鿿"           # CJK Unified Ideographs
@@ -125,11 +128,15 @@ class ManualService:
         await self._get_active_camp(camp_id)  # 校验 camp 存在性（BUG-MAN-005）
         ext = _resolve_ext(file.filename)
 
+        # 流式读取并立即校验大小（避免一次性加载大文件到内存）
+        data = await file.read()
+        if len(data) > MAX_MANUAL_BYTES:
+            raise ValidationError(
+                f"手册文件大小超过限制（{MAX_MANUAL_BYTES // (1024*1024)} MB），请精简后再上传"
+            )
+
         directory = _manual_dir(camp_id)
         target = directory / f"manual{ext}"
-
-        # 读取上传字节并落盘
-        data = await file.read()
         target.write_bytes(data)
 
         content = _read_full_text(target)
@@ -153,6 +160,11 @@ class ManualService:
         await self._get_active_camp(camp_id)  # 校验 camp 存在性
         if not content or not content.strip():
             raise ValidationError("粘贴内容不能为空")
+        # 粘贴文本按字符数限制（约等于字节数上限，UTF-8 中英混合）
+        if len(content.encode("utf-8")) > MAX_MANUAL_BYTES:
+            raise ValidationError(
+                f"粘贴内容超过限制（{MAX_MANUAL_BYTES // (1024*1024)} MB）"
+            )
 
         directory = _manual_dir(camp_id)
         target = directory / "manual_paste.md"
