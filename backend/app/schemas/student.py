@@ -30,8 +30,8 @@ class DayTaskOut(BaseModel):
     day_number: int = Field(..., ge=1, description="第几天(1~N)")
     title: str
     description: Optional[str] = None
-    tags: Optional[list[dict[str, Any]]] = Field(
-        default=None, description="标签(手册章节/类型/时长)"
+    tags: Optional[list[str]] = Field(
+        default=None, description="标签(章节名/类型/时长等，字符串列表)"
     )
     is_completed: bool = False
     edited: bool = Field(default=False, description="是否被人工编辑过")
@@ -58,7 +58,7 @@ class DayTaskUpdate(BaseModel):
 
     title: Optional[str] = Field(default=None, max_length=200)
     description: Optional[str] = None
-    tags: Optional[list[dict[str, Any]]] = None
+    tags: Optional[list[str]] = None
 
 
 class RouteRegenerateIn(BaseModel):

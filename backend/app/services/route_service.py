@@ -319,20 +319,54 @@ class RouteService:
         return camp, manual
 
     async def _to_route_out(self, route: StudyRoute) -> RouteOut:
-        """把 StudyRoute ORM 转 RouteOut，确保 day_tasks 已加载并按 day_number 排序。"""
+        """把 StudyRoute ORM 转 RouteOut，确保 day_tasks 已加载并按 day_number 排序。
+
+        - BUG-NEW-001：兼容旧数据（dict 形式）转字符串列表，避免 Pydantic 校验失败。
+        """
         # 关系已通过 selectinload 加载；若未加载则显式查询一次
         if "day_tasks" not in route.__dict__ or route.day_tasks is None:
             await self.session.refresh(route, attribute_names=["day_tasks"])
 
         tasks_sorted = sorted(route.day_tasks, key=lambda t: t.day_number)
-        return RouteOut.model_validate(
-            {
-                "id": route.id,
-                "camp_id": route.camp_id,
-                "generated_at": route.generated_at,
-                "source": route.source,
-                "tasks": [DayTaskOut.model_validate(t) for t in tasks_sorted],
-                "created_at": route.created_at,
-                "updated_at": route.updated_at,
-            }
+
+        normalized_tasks: list[DayTaskOut] = []
+        for t in tasks_sorted:
+            tags_str: list[str] = []
+            for tag in (t.tags or []):
+                if isinstance(tag, str):
+                    tags_str.append(tag)
+                elif isinstance(tag, dict):
+                    # 旧结构：{"name": "...", "label": "...", "key": "...", "title": "..."}
+                    picked: Optional[str] = None
+                    for key in ("name", "label", "key", "title"):
+                        if key in tag and tag[key]:
+                            picked = str(tag[key])
+                            break
+                    tags_str.append(picked if picked is not None else str(tag))
+                else:
+                    tags_str.append(str(tag))
+
+            normalized_tasks.append(
+                DayTaskOut(
+                    id=t.id,
+                    route_id=t.route_id,
+                    day_number=t.day_number,
+                    title=t.title,
+                    description=t.description,
+                    tags=tags_str or None,
+                    is_completed=t.is_completed,
+                    edited=t.edited,
+                    created_at=t.created_at,
+                    updated_at=t.updated_at,
+                )
+            )
+
+        return RouteOut(
+            id=route.id,
+            camp_id=route.camp_id,
+            generated_at=route.generated_at,
+            source=route.source,
+            tasks=normalized_tasks,
+            created_at=route.created_at,
+            updated_at=route.updated_at,
         )

@@ -67,14 +67,25 @@ async def get_manual(
 ) -> dict:
     """获取手册元信息，并附带 content 前 n 字预览。
 
-    ``ManualPreview`` 仅暴露预览字段；如需全文走 ``GET /api/manuals/{camp_id}/full``
-    （后续阶段再补，本期先返回 ManualOut + 预览字段，结构兼容）。
+    - 完整 content 不在 API 响应中暴露（修复 BUG-MAN-001 信息隐藏原则）。
+    - 前端如需全文可读 ``preview`` 字段；后续若要全文可走独立的受控接口。
     """
     service = ManualService(db)
     manual = await service.get_manual(camp_id=camp_id)
     preview_text = (manual.content or "")[: max(n, 0)]
 
-    full = ManualOut.model_validate(manual).model_dump(mode="json")
+    # BUG-MAN-001：构造元信息时强制不返回 content 全文
+    meta = ManualOut(
+        id=manual.id,
+        camp_id=manual.camp_id,
+        filename=manual.filename,
+        file_path=manual.file_path,
+        content=None,
+        word_count=manual.word_count,
+        uploaded_at=manual.uploaded_at,
+        created_at=manual.created_at,
+        updated_at=manual.updated_at,
+    )
     preview = ManualPreview(
         id=manual.id,
         camp_id=manual.camp_id,
@@ -82,10 +93,14 @@ async def get_manual(
         word_count=manual.word_count,
         preview=preview_text,
         uploaded_at=manual.uploaded_at,
-    ).model_dump(mode="json")
+    )
 
-    # 完整手册 + 预览（前端可按需渲染）
-    return success({"manual": full, "preview": preview})
+    return success(
+        {
+            "manual": meta.model_dump(mode="json"),
+            "preview": preview.model_dump(mode="json"),
+        }
+    )
 
 
 @router.delete(

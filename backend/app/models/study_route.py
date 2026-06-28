@@ -67,8 +67,8 @@ class DayTask(Base):
     day_number: Mapped[int] = mapped_column(Integer, nullable=False, comment="第几天(1~N)")
     title: Mapped[str] = mapped_column(String(200), nullable=False, comment="任务标题")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="任务描述")
-    tags: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
-        JSON, nullable=True, comment="标签（手册章节/类型/时长）"
+    tags: Mapped[Optional[list[Any]]] = mapped_column(
+        JSON, nullable=True, comment="标签（字符串列表或任意结构，schema 由 Pydantic 校验）"
     )
     is_completed: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, comment="是否完成"
