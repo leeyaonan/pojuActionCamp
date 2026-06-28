@@ -148,17 +148,18 @@ class PojuClient:
 
         Returns:
             标准化打卡记录字典列表；接口返回空或异常时返回空列表。
+
+        Raises:
+            PojuAuthError: Token 失效（401/403），上抛。
+            PojuApiError: 业务错误（4xx/5xx），上抛（修复 BUG-PJU-001：不再静默吞）。
+            PojuNetworkError: 网络错误，上抛。
+            PojuNotAvailable: 接口 pending/未开放，上抛。
         """
         endpoint = ENDPOINTS["fetch_checkins"]
         params = {"camp_id": camp_id} if camp_id is not None else None
-        try:
-            data = await self._request(endpoint, params=params)
-        except PojuAuthError:
-            raise
-        except (PojuApiError, PojuNetworkError):
-            # 读接口失败返回空列表，调用方据 last_synced_at 判断
-            logger.warning("拉取打卡记录失败，返回空列表")
-            return []
+        # 注意：不再静默吞 PojuNetworkError/PojuApiError，
+        # 否则 verify_token 在网络错时永远返回 True（假阳性）。
+        data = await self._request(endpoint, params=params)
         if not data:
             return []
         if isinstance(data, dict) and "list" in data:
@@ -188,12 +189,21 @@ class PojuClient:
         """校验 Token 有效性（调用一次读接口验证）。
 
         Returns:
-            True 表示 Token 有效；False 或抛 PojuAuthError 表示失效。
+            True: Token + base_url 均可连通。
+            False: Token 失效（401/403）、网络错、业务错或接口 pending 均视为无效。
+
+        Raises:
+            不抛任何 Poju 异常；调用方只看 True/False。
         """
         try:
             await self.fetch_checkin_records()
             return True
-        except PojuAuthError:
+        except (
+            PojuAuthError,
+            PojuApiError,
+            PojuNetworkError,
+            PojuNotAvailable,
+        ):
             return False
 
     # ------------------------------------------------------------------
