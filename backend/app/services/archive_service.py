@@ -505,12 +505,16 @@ class ArchiveService:
         total = len(records)
         valid_days = 0
         last_stars: Optional[int] = None
+        # 倒序遍历（records 已按 day_number desc, id desc 排序）：
+        # - last_stars: 最近一次评改的 stars（不论大小，1/2/3 都取）
+        # - valid_days: stars >= 2 的有效打卡总数
         for r in records:
-            if r.stars is not None and r.stars >= 2:
-                valid_days += 1
-                # 倒序遍历，第一个非空 stars 即最近评改
+            if r.stars is not None:
                 if last_stars is None:
+                    # 第一个非空 stars 即最近一次评改的星级
                     last_stars = r.stars
+                if r.stars >= 2:
+                    valid_days += 1
 
         # 学员 last_synced_at（从 student 表读）
         student_stmt = select(Student.last_synced_at).where(Student.id == student_id)
