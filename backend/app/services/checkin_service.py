@@ -185,6 +185,20 @@ class CheckinService:
             raise ValidationError("营期已结束，无法提交打卡")
         day_number = (today - camp.start_date).days + 1
 
+        # 同日去重（P0-BUG-PJU-002）：同一 camp + 同一 day_number 仅允许 1 条
+        dup_stmt = (
+            select(CheckinRecord.id)
+            .where(
+                CheckinRecord.camp_id == camp_id,
+                CheckinRecord.day_number == day_number,
+            )
+            .limit(1)
+        )
+        if (await self.session.execute(dup_stmt)).scalar_one_or_none() is not None:
+            raise ValidationError(
+                f"今日（Day {day_number}）已打卡，每位学员每天仅 1 条记录"
+            )
+
         # 默认：手动模式
         method = "manual"
         sync_status = "manual"
