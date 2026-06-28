@@ -248,7 +248,7 @@ class GradingService:
 
         # 更新 CheckinRecord
         record.stars = stars
-        record.comment = comment
+        # 不再写 CheckinRecord.comment（模型无此字段，评语仅存于 Grade 表）
         record.grade_status = "graded"
         record.synced_to_poju = False
         record.synced_at = None
@@ -345,8 +345,14 @@ class GradingService:
         if student_id == 0:
             return "[]"
 
+        # join Grade 取最近一条评语（CheckinRecord 无 comment 字段）
         stmt = (
-            select(CheckinRecord)
+            select(CheckinRecord, Grade)
+            .outerjoin(
+                Grade,
+                (Grade.checkin_record_id == CheckinRecord.id)
+                & (Grade.source.in_(["ai", "confirmed", "manual"])),
+            )
             .where(
                 CheckinRecord.student_id == student_id,
                 CheckinRecord.grade_status == "graded",
@@ -355,15 +361,16 @@ class GradingService:
             .order_by(CheckinRecord.id.desc())
             .limit(_HISTORY_LIMIT)
         )
-        rows = (await self.session.execute(stmt)).scalars().all()
+        rows = (await self.session.execute(stmt)).all()
 
         if not rows:
             return "[]"
 
         items: list[dict[str, Any]] = []
-        for r in rows:
+        for r, grade in rows:
             content = r.content or ""
-            comment = r.comment or ""
+            # 评语从 Grade 表取（CheckinRecord 无该字段）
+            comment = (grade.comment if grade is not None else None) or ""
             items.append(
                 {
                     "date": r.checkin_date.isoformat(),
@@ -426,13 +433,23 @@ class GradingService:
             logger.warning("PojuConfig 未配置，无法同步评改")
             return False
 
+        # 评语从最近一条 Grade 取（CheckinRecord 无 comment 字段）
+        grade_stmt = (
+            select(Grade)
+            .where(Grade.checkin_record_id == record.id)
+            .order_by(Grade.id.desc())
+            .limit(1)
+        )
+        latest_grade = (await self.session.execute(grade_stmt)).scalars().first()
+        comment_text = (latest_grade.comment if latest_grade is not None else "") or ""
+
         client = PojuClient(base_url=config.base_url, token=config.token)
         try:
             await client.submit_grade(
                 student_id=student.poju_student_id,
                 checkin_id=record.poju_checkin_id,
                 stars=record.stars or 0,
-                comment=record.comment or "",
+                comment=comment_text,
             )
             return True
         except Exception as exc:  # noqa: BLE001
