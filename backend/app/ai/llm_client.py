@@ -36,23 +36,14 @@ _BASE_BACKOFF = 1.0  # 秒，指数退避基数：1s, 2s, 4s ...
 
 
 class LLMError(_CoreLLMError):
-    """大模型调用异常（超时、网络、校验失败重试耗尽等）。
+    """大模型调用异常（继承自 core.LLMError，code=3001, http_status=502）。
 
-    继承自 ``app.core.exceptions.LLMError``（code=3001, http_status=502），
-    使全局异常处理器能统一返回 ``{code:3001, message, data:null}``。
-
-    额外保留 ``cause`` 属性以便记录根因异常（不参与 HTTP 响应序列化）。
+    兼容旧 API：``raise LLMError(msg, cause=e)`` 中 ``cause`` 仅作属性存根，
+    不参与 HTTP 响应序列化。如需溯源，使用 ``raise ... from e``。
     """
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        cause: Optional[Exception] = None,
-        code: Optional[int] = None,
-        http_status: Optional[int] = None,
-    ) -> None:
-        super().__init__(message, code=code, http_status=http_status)
+    def __init__(self, message: str, *, cause: Optional[Exception] = None) -> None:
+        super().__init__(message)
         self.cause = cause
 
 

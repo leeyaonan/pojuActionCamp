@@ -8,9 +8,9 @@
 register_exception_handlers 将上述异常及 RequestValidationError 映射为
 统一 JSON 响应 {code, message, data: null}，错误码见 8.4。
 
-注意：app.ai.llm_client 另有同名的 LLMError（AI 层抛出）。
-此处 LLMError 为基础设施层定义，二者模块路径不同，互不冲突；
-若 AI 层需要复用全局错误码，可在 ai 模块内 from app.core.exceptions import LLMError。
+注意：app.ai.llm_client 内的 LLMError 即本异常的子类（继承并复用
+code/http_status），全局异常处理器可统一捕获。调用方 raise LLMError 时
+会触发 {code:3001, message, data:null} 统一响应。
 """
 from __future__ import annotations
 
