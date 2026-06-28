@@ -231,34 +231,50 @@ class LLMClient:
 
         if self.provider == "anthropic":
             tool_name = "return_result"
-            result = await anyio.to_thread.run_sync(
-                lambda: self._client.messages.create(
-                    model=self.model,
-                    system=system,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=4096,
-                    tools=[
-                        {
-                            "name": tool_name,
-                            "description": "返回结构化结果，必须严格符合 schema",
-                            "input_schema": _json_schema_to_input_schema(schema_json),
-                        }
-                    ],
-                    tool_choice={"type": "tool", "name": tool_name},
+            try:
+                result = await anyio.to_thread.run_sync(
+                    lambda: self._client.messages.create(
+                        model=self.model,
+                        system=system,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=4096,
+                        tools=[
+                            {
+                                "name": tool_name,
+                                "description": "返回结构化结果，必须严格符合 schema",
+                                "input_schema": _json_schema_to_input_schema(schema_json),
+                            }
+                        ],
+                        tool_choice={"type": "tool", "name": tool_name},
+                    )
                 )
-            )
-            # 从 tool_use 块提取 input
-            data: Any = None
-            for block in result.content:
-                if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
-                    data = block.input
-                    break
-            if data is None:
-                raise ValidationError.from_exception_data(
-                    "未在响应中找到 tool_use 块", []
+                # 从 tool_use 块提取 input
+                data: Any = None
+                for block in result.content:
+                    if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
+                        data = block.input
+                        break
+                if data is None:
+                    raise ValidationError.from_exception_data(
+                        "未在响应中找到 tool_use 块", []
+                    )
+                return schema.model_validate(data)
+            except ValidationError as ve:
+                # 协议不支持 tool_use 的兼容代理（如 OpenAI 兼容中转）→ 降级为纯文本 JSON 解析
+                if "未在响应中找到 tool_use 块" not in str(ve):
+                    raise
+                logger.warning(
+                    "anthropic 代理不支持 tool_use，回退到纯 JSON 解析"
                 )
-            return schema.model_validate(data)
+                raw = await self._chat_text(system, messages, temperature)
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError as e:
+                    raise ValidationError.from_exception_data(
+                        f"降级 JSON 解析失败: {e}", []
+                    ) from e
+                return schema.model_validate(data)
 
         else:
             # openai json_schema 结构化输出
