@@ -33,7 +33,7 @@ from app.ai.llm_client import LLMClient
 from app.ai.prompt_engine import PromptEngine
 from app.ai.schemas import CheckinDraftAI
 from app.config import Settings
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import ManualNotFoundError, NotFoundError, ValidationError
 from app.models.camp import Camp
 from app.models.checkin import CheckinRecord
 from app.models.manual import Manual
@@ -200,12 +200,17 @@ class CheckinService:
             )
 
         # 默认：手动模式
-        method = "manual"
-        sync_status = "manual"
+        method: str = "manual"
+        sync_status: str = "manual"
         poju_checkin_id: Optional[str] = None
+        degraded = False
 
         if auto:
+            prev_method = "auto"  # 用户意图是 auto
             method, sync_status, poju_checkin_id = await self._sync_to_poju(content)
+            # auto 失败降级为 manual（BUG-STU-008：标识 degraded 让前端可区分）
+            if method != prev_method:
+                degraded = True
 
         record = CheckinRecord(
             student_id=MVP_STUDENT_ID_PLACEHOLDER,
@@ -230,6 +235,7 @@ class CheckinService:
             method=method,  # type: ignore[arg-type]
             sync_status=sync_status,  # type: ignore[arg-type]
             poju_checkin_id=poju_checkin_id,
+            degraded=degraded,
         )
 
     # ------------------------------------------------------------------
@@ -302,11 +308,14 @@ class CheckinService:
         return "\n".join(lines)
 
     async def _get_manual_snippet(self, camp_id: int) -> str:
-        """取手册全文前 2000 字。手册不存在时返回空串（不阻断 LLM 调用）。"""
+        """取手册全文前 2000 字。
+
+        - 手册缺失时 raise ManualNotFoundError（BUG-STU-009：对齐 route generate 行为）。
+        """
         manual_stmt = select(Manual).where(Manual.camp_id == camp_id)
         manual = (await self.session.execute(manual_stmt)).scalar_one_or_none()
         if manual is None or not manual.content:
-            return "（手册未配置，请仅基于学员输入与今日任务生成。）"
+            raise ManualNotFoundError(f"camp {camp_id} 未配置手册或手册内容为空")
         return manual.content[:_MANUAL_SNIPPET_MAX]
 
     async def _sync_to_poju(self, content: str) -> tuple[str, str, Optional[str]]:

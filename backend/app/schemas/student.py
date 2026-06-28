@@ -121,6 +121,10 @@ class CheckinSubmitResult(BaseModel):
     poju_checkin_id: Optional[str] = Field(
         default=None, description="破局打卡记录唯一标识(自动提交成功时返回)"
     )
+    degraded: bool = Field(
+        default=False,
+        description="True 表示 auto=true 但破局同步降级为 manual（修复 BUG-STU-008）",
+    )
 
 
 class CheckinRecordOut(BaseModel):
