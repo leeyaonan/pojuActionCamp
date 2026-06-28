@@ -100,6 +100,14 @@ class CampService:
                 "camp 日期倒序: start=%s > end=%s（仅警告）",
                 payload.start_date, payload.end_date,
             )
+        # BUG-CAMP-007：起止与 total_days 不符 warning（不阻断，便于后续修数据）
+        span_days = (payload.end_date - payload.start_date).days + 1
+        if span_days != payload.total_days:
+            logger.warning(
+                "camp 起止与 total_days 不一致: total_days=%s, 实际跨 %s 天 (start=%s, end=%s)",
+                payload.total_days, span_days,
+                payload.start_date, payload.end_date,
+            )
         # 兜底：min_checkin_days 缺省时按 0.6 计算
         min_days = payload.min_checkin_days
         if not min_days or min_days <= 0:
