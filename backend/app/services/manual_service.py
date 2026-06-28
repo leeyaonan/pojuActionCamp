@@ -122,6 +122,7 @@ class ManualService:
         - 读全文 → 算字数 → upsert Manual(camp_id unique)。
         """
         _safe_camp_id(camp_id)
+        await self._get_active_camp(camp_id)  # 校验 camp 存在性（BUG-MAN-005）
         ext = _resolve_ext(file.filename)
 
         directory = _manual_dir(camp_id)
@@ -149,6 +150,7 @@ class ManualService:
         - 全文直接来自请求体，不再读文件。
         """
         _safe_camp_id(camp_id)
+        await self._get_active_camp(camp_id)  # 校验 camp 存在性
         if not content or not content.strip():
             raise ValidationError("粘贴内容不能为空")
 
@@ -172,6 +174,7 @@ class ManualService:
     async def get_manual(self, camp_id: int) -> Manual:
         """按 camp_id 取手册；不存在时 raise NotFoundError。"""
         _safe_camp_id(camp_id)
+        await self._get_active_camp(camp_id)  # 校验 camp 存在性（BUG-MAN-004）
         manual = await self._get_by_camp(camp_id)
         if manual is None:
             raise NotFoundError(f"camp {camp_id} 未配置手册")
@@ -195,6 +198,7 @@ class ManualService:
         - DB 记录不存在 raise NotFoundError。
         """
         _safe_camp_id(camp_id)
+        await self._get_active_camp(camp_id)  # 校验 camp 存在性
         manual = await self._get_by_camp(camp_id)
         if manual is None:
             raise NotFoundError(f"camp {camp_id} 未配置手册")
@@ -218,6 +222,16 @@ class ManualService:
     # ------------------------------------------------------------------
     # 内部辅助
     # ------------------------------------------------------------------
+    async def _get_active_camp(self, camp_id: int):
+        """取未软删的 camp；找不到抛 NotFoundError（避免孤儿数据）。"""
+        from app.models.camp import Camp  # 局部 import 避免循环
+
+        stmt = select(Camp).where(Camp.id == camp_id, Camp.is_deleted.is_(False))
+        camp = (await self.session.execute(stmt)).scalar_one_or_none()
+        if camp is None:
+            raise NotFoundError(f"行动营 {camp_id} 不存在")
+        return camp
+
     async def _get_by_camp(self, camp_id: int) -> Manual | None:
         result = await self.session.execute(
             select(Manual).where(Manual.camp_id == camp_id)

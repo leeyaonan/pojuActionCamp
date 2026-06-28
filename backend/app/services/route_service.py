@@ -121,8 +121,14 @@ class RouteService:
     async def get_route(self, camp_id: int) -> Optional[RouteOut]:
         """按 camp_id 取学习路线（含按 day_number 排序的任务）。
 
-        不存在时返回 None（路由层据此返回空/null，由前端识别状态）。
+        - 营不存在/已软删 → 抛 NotFoundError（修复 BUG-MAN-004 孤儿数据）。
+        - 路线不存在 → 返回 None（前端识别"待生成"状态）。
         """
+        # 校验 camp 存在（不区分角色）
+        camp_stmt = select(Camp).where(Camp.id == camp_id, Camp.is_deleted.is_(False))
+        if (await self.session.execute(camp_stmt)).scalar_one_or_none() is None:
+            raise NotFoundError(f"行动营 {camp_id} 不存在")
+
         stmt = (
             select(StudyRoute)
             .where(StudyRoute.camp_id == camp_id)
