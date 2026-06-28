@@ -4,6 +4,7 @@ import { Card, Row, Col, Tag, Button, Spin, Empty, Progress } from 'antd';
 import { CalendarOutlined, ReadOutlined, EditOutlined } from '@ant-design/icons';
 import { useCamp } from '@/hooks/useCamps';
 import { useTodayTasks, useRoute, useCheckins } from '@/hooks/useStudent';
+import DeleteCampButton from '@/components/DeleteCampButton';
 import type { CampStatus, CheckinRecordOut } from '@/api/types';
 import dayjs from 'dayjs';
 
@@ -117,6 +118,7 @@ export default function StudentDashboard() {
           <Link to={`/camp/${campId}/manual`}>
             <Button icon={<ReadOutlined />}>手册</Button>
           </Link>
+          <DeleteCampButton campId={camp.id} campName={camp.name} />
         </div>
       </div>
 

@@ -19,6 +19,7 @@ import { SyncOutlined, SearchOutlined, EditOutlined, FileTextOutlined } from '@a
 import dayjs from 'dayjs';
 import { useCamp } from '@/hooks/useCamps';
 import { useStudents, useSyncBoard, usePendingGrades } from '@/hooks/useVolunteer';
+import DeleteCampButton from '@/components/DeleteCampButton';
 import type { StudentStatus, StudentSummary } from '@/api/types';
 
 /**
@@ -208,6 +209,7 @@ export default function VolunteerDashboard() {
           >
             立即同步
           </Button>
+          <DeleteCampButton campId={camp.id} campName={camp.name} />
         </div>
       </div>
 
