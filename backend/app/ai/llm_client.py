@@ -26,6 +26,8 @@ from typing import Any, AsyncIterator, Optional, Type
 import anyio
 from pydantic import BaseModel, ValidationError
 
+from app.core.exceptions import LLMError as _CoreLLMError
+
 logger = logging.getLogger(__name__)
 
 # 默认重试与退避参数（技术方案 6.2：指数退避，最多 3 次）
@@ -33,14 +35,24 @@ _MAX_RETRIES = 3
 _BASE_BACKOFF = 1.0  # 秒，指数退避基数：1s, 2s, 4s ...
 
 
-class LLMError(Exception):
+class LLMError(_CoreLLMError):
     """大模型调用异常（超时、网络、校验失败重试耗尽等）。
 
-    对应统一错误码 3001（大模型调用失败）。
+    继承自 ``app.core.exceptions.LLMError``（code=3001, http_status=502），
+    使全局异常处理器能统一返回 ``{code:3001, message, data:null}``。
+
+    额外保留 ``cause`` 属性以便记录根因异常（不参与 HTTP 响应序列化）。
     """
 
-    def __init__(self, message: str, *, cause: Optional[Exception] = None) -> None:
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str,
+        *,
+        cause: Optional[Exception] = None,
+        code: Optional[int] = None,
+        http_status: Optional[int] = None,
+    ) -> None:
+        super().__init__(message, code=code, http_status=http_status)
         self.cause = cause
 
 
