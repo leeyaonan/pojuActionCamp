@@ -429,7 +429,7 @@ function GradingDetail({
     if (!item.student_id) return;
     setArchiveLoading(true);
     http
-      .get<StudentArchive>(`/students/${item.student_id}`)
+      .get<StudentArchive>(`/volunteer/students/${item.student_id}`)
       .then((r) => r.data)
       .then((data) => {
         if (!cancelled) setArchive(data);
