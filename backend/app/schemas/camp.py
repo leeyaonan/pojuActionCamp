@@ -25,14 +25,19 @@ class CampBase(BaseModel):
     total_days: int = Field(..., gt=0, description="总天数")
     start_date: date = Field(..., description="开始日期")
     end_date: date = Field(..., description="结束日期")
-    min_checkin_days: int = Field(..., gt=0, description="最低打卡完成天数")
+    min_checkin_days: Optional[int] = Field(default=None, gt=0, description="最低打卡完成天数；缺省由 service 按 total_days*0.6 兜底")
 
     @field_validator("end_date")
     @classmethod
     def _end_after_start(cls, v: date, info) -> date:
+        """倒序日期不再强制阻断（对齐 PRD BR-F1-2）。
+
+        业务层会在 service 处做兜底校验并返回 warning。
+        """
         start = info.data.get("start_date")
         if start and v < start:
-            raise ValueError("end_date 不能早于 start_date")
+            # 不抛错；返回原值，让 service 层处理
+            pass
         return v
 
 

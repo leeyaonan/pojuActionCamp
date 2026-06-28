@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import date as _date_cls
 
 from sqlalchemy import func, select
@@ -27,6 +28,8 @@ from app.models.manual import Manual
 from app.models.student import Student
 from app.models.study_route import StudyRoute
 from app.schemas.camp import CampCreate, CampOut, CampSummary
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -88,18 +91,19 @@ class CampService:
     async def create_camp(self, payload: CampCreate) -> Camp:
         """创建行动营。
 
-        - start_date < end_date 由 Pydantic schema 在请求层校验；
-          这里再做一次业务防御，确保 end_date 至少与 start_date 同日。
-        - min_checkin_days 未显式传或 <=0 时按 calc_min_days(total_days) 兜底；
-          实际 schema 要求 gt=0，因此仅当调用方绕过 schema 直接传对象时才触发兜底。
-        - is_deleted 默认 False。
+        - 倒序日期仅警告不阻断（对齐 PRD BR-F1-2）。
+        - min_checkin_days 缺省时按 calc_min_days(total_days) 兜底。
         """
+        # 倒序日期仅记录警告，不阻断（修复 BUG-CAMP-006）
         if payload.end_date < payload.start_date:
-            raise ValidationError("end_date 不能早于 start_date")
+            logger.warning(
+                "camp 日期倒序: start=%s > end=%s（仅警告）",
+                payload.start_date, payload.end_date,
+            )
+        # 兜底：min_checkin_days 缺省时按 0.6 计算
         min_days = payload.min_checkin_days
         if not min_days or min_days <= 0:
             min_days = calc_min_days(payload.total_days)
-        # 兜底再校验一次：min 不允许大于 total
         if min_days > payload.total_days:
             raise ValidationError("min_checkin_days 不能大于 total_days")
 
