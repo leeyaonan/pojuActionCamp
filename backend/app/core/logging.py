@@ -1,6 +1,6 @@
 """日志配置模块。
 
-结构化日志，按模块分 logger，输出到控制台 + data/logs/app.log。
+结构化日志，按模块分 logger，输出到控制台 + data/logs/<启动日期>/<启动时间>.log。
 关键操作（接口调用、AI 调用、定时任务）记录 INFO；异常记录 ERROR + 堆栈。
 对齐技术方案 8.3。
 """
@@ -11,9 +11,8 @@ import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# 日志目录与文件
+# 日志根目录
 LOG_DIR = Path("data/logs")
-LOG_FILE = LOG_DIR / "app.log"
 
 # 日志格式
 _LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
@@ -26,7 +25,8 @@ def setup_logging(debug: bool = True) -> None:
     """初始化全局日志配置。
 
     - 控制台输出：INFO（debug=True 时为 DEBUG）。
-    - 文件输出：data/logs/app.log，按大小轮转，保留备份。
+    - 文件输出：data/logs/<启动日期 YYYY-MM-DD>/app-<启动时间 HH-MM-SS>.log，
+      按大小轮转，保留备份；不同启动之间按日期分目录、按启动时间分文件。
     - 第三方库日志级别下调，避免噪声。
     """
     global _configured
@@ -47,11 +47,15 @@ def setup_logging(debug: bool = True) -> None:
     console_handler.setFormatter(formatter)
     root.addHandler(console_handler)
 
-    # 文件 handler（轮转，单文件 5MB，保留 5 个备份）
+    # 文件 handler：以启动日期为子目录、启动时间为文件名，每次启动新建一个文件
     try:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        start_ts = datetime.now()
+        day_dir = LOG_DIR / start_ts.strftime("%Y-%m-%d")
+        day_dir.mkdir(parents=True, exist_ok=True)
+        log_file = day_dir / f"app-{start_ts.strftime('%H-%M-%S')}.log"
         file_handler = RotatingFileHandler(
-            LOG_FILE,
+            log_file,
             maxBytes=5 * 1024 * 1024,
             backupCount=5,
             encoding="utf-8",

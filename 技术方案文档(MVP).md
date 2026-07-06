@@ -824,7 +824,7 @@ class Settings(BaseSettings):
 
 ### 8.3 日志
 
-- 结构化日志，按模块分 logger，输出到 `data/logs/app.log` + 控制台。
+- 结构化日志，按模块分 logger，输出到 `data/logs/<启动日期 YYYY-MM-DD>/app-<启动时间 HH-MM-SS>.log` + 控制台；按启动日期分子目录、每次启动新建一个 log 文件，单文件 5MB 轮转保留 5 个备份。
 - 关键操作（接口调用、AI 调用、定时任务）记录 INFO；异常记录 ERROR + 堆栈。
 
 ### 8.4 统一响应与错误处理
