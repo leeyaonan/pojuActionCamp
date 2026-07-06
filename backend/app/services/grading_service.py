@@ -20,7 +20,8 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.llm_client import LLMClient, get_llm_client
+from app.ai.llm_client import LLMClient
+from app.services.llm_settings_service import LLMSettingsService
 from app.ai.prompt_engine import PromptEngine
 from app.ai.schemas import GradeDraftAI
 from app.config import Settings
@@ -74,8 +75,16 @@ class GradingService:
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
         self.session = session
         self.settings = settings
-        self.llm: LLMClient = get_llm_client(settings)
+        # LLMClient 延迟获取：需异步读 DB 激活配置，故不在构造期取
+        self.llm: Optional[LLMClient] = None
         self.prompt_engine: PromptEngine = _prompt_engine
+
+    async def _ensure_llm(self) -> None:
+        """按当前激活厂商取 LLMClient 单例（无激活回退 .env，见 LLMSettingsService）。"""
+        if self.llm is None:
+            self.llm = await LLMSettingsService(
+                self.session, self.settings
+            ).get_active_client()
 
     # ------------------------------------------------------------------
     # 待评改列表
@@ -139,6 +148,7 @@ class GradingService:
         - scoring_standard: ScoringService.get_active() 的原始结构
         - current_day: 本次打卡的 day_number
         """
+        await self._ensure_llm()
         record = await self._get_checkin(checkin_id)
         student = await self._get_student_or_none(record.student_id)
 

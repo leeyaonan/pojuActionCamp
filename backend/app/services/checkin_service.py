@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.llm_client import LLMClient
+from app.services.llm_settings_service import LLMSettingsService
 from app.ai.prompt_engine import PromptEngine
 from app.ai.schemas import CheckinDraftAI
 from app.config import Settings
@@ -73,13 +74,20 @@ class CheckinService:
         self,
         session: AsyncSession,
         settings: Settings,
-        llm: LLMClient,
         prompt_engine: PromptEngine,
     ) -> None:
         self.session = session
         self.settings = settings
-        self.llm = llm
+        # LLMClient 延迟获取：需异步读 DB 激活配置，故不在构造期取
+        self.llm: Optional[LLMClient] = None
         self.prompt_engine = prompt_engine
+
+    async def _ensure_llm(self) -> None:
+        """按当前激活厂商取 LLMClient 单例（无激活回退 .env，见 LLMSettingsService）。"""
+        if self.llm is None:
+            self.llm = await LLMSettingsService(
+                self.session, self.settings
+            ).get_active_client()
 
     # ------------------------------------------------------------------
     # 生成打卡草稿
@@ -98,6 +106,7 @@ class CheckinService:
         - 取手册全文前 2000 字作为 manual_snippet。
         - 组装 checkin_gen.txt 提示词，response_schema=CheckinDraftAI。
         """
+        await self._ensure_llm()
         if not text or not text.strip():
             raise ValidationError("text 不能为空")
 

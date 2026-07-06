@@ -71,6 +71,43 @@ export function useSyncBoard(campId: number) {
   });
 }
 
+/**
+ * 初始化学员档案 mutation（拉破局 query-people）。
+ *
+ * 成功 → 刷新学员列表（全部 status 维度）+ 自动 inspect `result.errors`，
+ * 由 Dashboard 通过 Modal.info 决定是否展开明细。
+ *
+ * 注：useQuery 的 key 含 status（all/ongoing/unqualified/qualified），要
+ * 刷新所有变体用 prefix `['students', campId]` 精确 prefix 匹配。
+ */
+export function useInitArchive(campId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => volunteerApi.initStudentArchive(campId),
+    onSuccess: () => {
+      // prefix 匹配：['students', campId, *] 全部失效
+      qc.invalidateQueries({ queryKey: ['students', campId] });
+    },
+    onError: (err) => {
+      toastOnBizError(err);
+    },
+  });
+}
+
+/** 刷新学员档案（同 useInitArchive，复用 InitResult；UI 区分按钮文案） */
+export function useRefreshArchive(campId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => volunteerApi.refreshStudentArchive(campId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['students', campId] });
+    },
+    onError: (err) => {
+      toastOnBizError(err);
+    },
+  });
+}
+
 /** 生成评改草稿 */
 export function useGenerateGrade() {
   const qc = useQueryClient();

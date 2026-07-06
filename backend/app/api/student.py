@@ -9,7 +9,6 @@ from datetime import date as _date_cls
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.llm_client import get_llm_client
 from app.ai.prompt_engine import PromptEngine
 from app.config import Settings
 from app.core.response import success
@@ -171,13 +170,14 @@ def _checkin_service(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings_dep),
 ) -> CheckinService:
-    """CheckinService 依赖：注入 DB session、Settings、单例 LLMClient、PromptEngine。"""
-    llm = get_llm_client(settings)
+    """CheckinService 依赖：注入 DB session、Settings、PromptEngine。
+
+    LLMClient 由 CheckinService 内部按激活厂商延迟获取（见 _ensure_llm）。
+    """
     prompt_engine = PromptEngine()
     return CheckinService(
         session=db,
         settings=settings,
-        llm=llm,
         prompt_engine=prompt_engine,
     )
 

@@ -13,6 +13,7 @@ import VolunteerArchive from '@/pages/volunteer/Archive';
 import Manual from '@/pages/Manual';
 import Scoring from '@/pages/Scoring';
 import Settings from '@/pages/Settings';
+import LLMSettings from '@/pages/LLMSettings';
 
 /**
  * App 根组件：路由表，对齐技术方案 12.1。
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/camp/:id/manual" element={<Manual />} />
         <Route path="/scoring" element={<Scoring />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/llm-settings" element={<LLMSettings />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

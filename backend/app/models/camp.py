@@ -37,6 +37,9 @@ class Camp(Base):
     min_checkin_days: Mapped[int] = mapped_column(
         Integer, nullable=False, comment="最低打卡完成天数（默认总天数×0.6，可改）"
     )
+    poju_action_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, comment="破局行动营 ID(actionId/UUID 字符串),可空,创建后可编辑"
+    )
     is_deleted: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, comment="软删除标记"
     )

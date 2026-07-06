@@ -24,6 +24,7 @@ from typing import Any, Literal, Optional
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.crypto import decrypt, ensure_fernet_key
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.camp import Camp
 from app.models.checkin import CheckinRecord
@@ -31,9 +32,11 @@ from app.models.settings import PojuConfig
 from app.models.student import Student
 from app.poju.client import PojuClient
 from app.poju.exceptions import PojuAuthError
+from cryptography.fernet import Fernet, InvalidToken
 from app.schemas.volunteer import (
     ArchiveStats,
     ArchiveTimelineItem,
+    InitResult,
     StudentArchive,
     StudentStatus,
     StudentSummary,
@@ -105,6 +108,27 @@ def _truncate(text: Optional[str], max_len: int = 100) -> Optional[str]:
     return text[: max_len - 1] + "…"
 
 
+def _build_fernet(secret_key: str) -> Fernet:
+    """根据 secret_key 构造 Fernet 实例（poju Token 解密用）。"""
+    return Fernet(ensure_fernet_key(secret_key))
+
+
+def _decrypt_poju_token(fernet: Fernet, ciphertext: Optional[str]) -> Optional[str]:
+    """把 PojuConfig 里加密的 token 解密为明文。
+
+    PojuConfig.token 在数据库里以 Fernet 密文存储，所有 PojuClient 调用
+    必须传明文 token。本函数失败抛 ValidationError（与 SettingsService 风格
+    对齐），解密前为空时透传 None。
+    """
+    if ciphertext is None:
+        return None
+    try:
+        return fernet.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, ValueError) as exc:
+        logger.error("PojuConfig.token 解密失败，secret_key 可能已变更: %s", exc)
+        raise ValidationError("破局 Token 解密失败，请到接口配置重新填写") from exc
+
+
 # ---------------------------------------------------------------------------
 # 服务类
 # ---------------------------------------------------------------------------
@@ -167,6 +191,24 @@ class ArchiveService:
             last_stars=last_stars,
             status=status,
             last_synced_at=student.last_synced_at,
+            # 迁移 0004 档案扩展字段（query-people 拉取后落到 Student 列）
+            full_name=student.full_name,
+            wechat_id=student.wechat_id,
+            phone=student.phone,
+            wechat_name=student.wechat_name,
+            user_name=student.user_name,
+            user_number=student.user_number,
+            leader_name=student.leader_name,
+            leader_user_name=student.leader_user_name,
+            leader_wechat_id=student.leader_wechat_id,
+            volunteer_name=student.volunteer_name,
+            volunteer_user_name=student.volunteer_user_name,
+            volunteer_wechat_id=student.volunteer_wechat_id,
+            data_officer_name=student.data_officer_name,
+            data_officer_user_name=student.data_officer_user_name,
+            data_officer_wechat_id=student.data_officer_wechat_id,
+            clock_in_count=student.clock_in_count,
+            camp_days=student.camp_days,
         )
         stats = ArchiveStats(
             total_checkins=total_checkins,
@@ -264,7 +306,9 @@ class ArchiveService:
         if config is None or not config.base_url or not config.token:
             raise ValidationError("破局接口未配置（缺少 token 或 base_url）")
 
-        plaintext_token: str = config.token
+        plaintext_token: str = _decrypt_poju_token(
+            _build_fernet(self.settings.secret_key), config.token
+        )
         client = PojuClient(base_url=config.base_url, token=plaintext_token)
         try:
             try:
@@ -306,11 +350,133 @@ class ArchiveService:
             if created:
                 synced_count += 1
 
+        # 统一 commit：避免 async session 默认 autobegin 不自动 commit
+        # 导致 yield 结束后被回滚；与 camp_service / manual_service 约定一致。
+        await self.session.commit()
+
         return SyncResult(
             success=True,
             synced_count=synced_count,
             synced_at=now,
             message=f"同步成功，新增 {synced_count} 条打卡记录（共处理 {len(records or [])} 条）",
+        )
+
+    # ------------------------------------------------------------------
+    # 写：学员档案初始化/刷新（W4 query-people）
+    # ------------------------------------------------------------------
+
+    async def init_volunteer_archive(self, camp_id: int) -> InitResult:
+        """从破局 query-people 拉取本期全部学员，按 (camp_id, poju_student_id) upsert。
+
+        与 sync_volunteer_board（拉打卡）解耦：本方法只写 students 表，不动
+        checkin_records（即便该学员在本地已存在打卡记录）。
+
+        行为：
+        - camp.role != 'volunteer' → ValidationError。
+        - camp.poju_action_id 为空 → ValidationError（前端引导用户去填写）。
+        - PojuConfig 缺 token/base_url → ValidationError。
+        - 调用 client.fetch_volunteer_people()（带分页与错误容忍）。
+        - 遍历 records，每条做 upsert：
+          - 不存在 → 新增（imported++）
+          - 已存在 → 更新扩展字段（updated++）；不动 nickname/wechat 的
+            最小历史语义（如接口未返回则保留本地值，由 _normalize_people
+            返回 None 实现"只覆盖有值的字段"）。
+        - 返回 InitResult（success + imported/updated/skipped/errors/message）。
+
+        Raises:
+            NotFoundError: camp 不存在/已软删。
+            ValidationError: 角色不符 / 缺 actionId / 缺 token/base_url。
+            PojuAuthError: Token 失效。
+        """
+        return await self._upsert_volunteer_archive(camp_id)
+
+    async def refresh_volunteer_archive(self, camp_id: int) -> InitResult:
+        """刷新学员档案（覆盖式更新）。实现同 init_volunteer_archive。
+
+        命名区分仅为 API 语义清晰：UI 上"刷新"按钮区别于"初始化"按钮，
+        但内部均按 (camp_id, poju_student_id) upsert，无差别。
+        """
+        return await self._upsert_volunteer_archive(camp_id)
+
+    async def _upsert_volunteer_archive(self, camp_id: int) -> InitResult:
+        """init / refresh 共用实现。"""
+        camp = await self._get_active_camp(camp_id)
+        if camp.role != "volunteer":
+            raise ValidationError(
+                f"camp {camp_id} 不是志愿者行动营（role={camp.role}），无法初始化档案"
+            )
+        if not camp.poju_action_id or not camp.poju_action_id.strip():
+            raise ValidationError(
+                "尚未填写破局行动营 ID (actionId)，请到「行动营设置」补填后再初始化"
+            )
+
+        config = await self._get_poju_config()
+        if config is None or not config.base_url or not config.token:
+            raise ValidationError("破局接口未配置（缺少 token 或 base_url）")
+
+        plaintext_token: str = _decrypt_poju_token(
+            _build_fernet(self.settings.secret_key), config.token
+        )
+        client = PojuClient(base_url=config.base_url, token=plaintext_token)
+        try:
+            records, errors, pages_fetched = await client.fetch_volunteer_people(
+                camp.poju_action_id
+            )
+        finally:
+            await client.close()
+
+        now = datetime.now(timezone.utc)
+        imported = 0
+        updated = 0
+        skipped = 0
+        for item in records or []:
+            poju_sid = (item.get("poju_student_id") or "").strip()
+            if not poju_sid:
+                skipped += 1
+                logger.warning(
+                    "跳过缺失 poju_student_id 的学员条目（query-people）: %r",
+                    item.get("poju_student_id"),
+                )
+                continue
+            was_created = await self._upsert_student_profile(
+                camp_id=camp_id,
+                poju_student_id=poju_sid,
+                profile=item,
+                last_synced_at=now,
+            )
+            if was_created:
+                imported += 1
+            else:
+                updated += 1
+
+        # 0 条 时打 WARNING 显眼：通常是 actionId 不匹配或响应未被解析
+        if imported + updated == 0 and not errors:
+            logger.warning(
+                "query-people 调用成功但 0 条 upsert：records=%d pages_fetched=%d "
+                "action_id=%s。请检查响应结构（看上面 query-people: 日志）。",
+                len(records or []),
+                pages_fetched,
+                camp.poju_action_id,
+            )
+
+        # 显式 commit：async session 默认不自动 commit，否则 yield 结束后被回滚
+        await self.session.commit()
+
+        message = (
+            f"成功处理 {imported + updated} 名学员"
+            f"（新增 {imported}，更新 {updated}，跳过 {skipped}）"
+            + (f"，{len(errors)} 个分页失败" if errors else "")
+        )
+        return InitResult(
+            success=True,
+            imported=imported,
+            updated=updated,
+            skipped=skipped,
+            total_from_poju=len(records or []),
+            pages_fetched=pages_fetched,
+            errors=errors,
+            message=message,
+            synced_at=now,
         )
 
     # ------------------------------------------------------------------
@@ -382,6 +548,24 @@ class ArchiveService:
                     last_stars=last_stars_map.get(s.id),
                     status=_to_student_status(grading_status),
                     last_synced_at=s.last_synced_at,
+                    # 迁移 0004 档案扩展字段（与 get_archive 对齐）
+                    full_name=s.full_name,
+                    wechat_id=s.wechat_id,
+                    phone=s.phone,
+                    wechat_name=s.wechat_name,
+                    user_name=s.user_name,
+                    user_number=s.user_number,
+                    leader_name=s.leader_name,
+                    leader_user_name=s.leader_user_name,
+                    leader_wechat_id=s.leader_wechat_id,
+                    volunteer_name=s.volunteer_name,
+                    volunteer_user_name=s.volunteer_user_name,
+                    volunteer_wechat_id=s.volunteer_wechat_id,
+                    data_officer_name=s.data_officer_name,
+                    data_officer_user_name=s.data_officer_user_name,
+                    data_officer_wechat_id=s.data_officer_wechat_id,
+                    clock_in_count=s.clock_in_count,
+                    camp_days=s.camp_days,
                 )
             )
 
@@ -413,6 +597,79 @@ class ArchiveService:
         """取全局 PojuConfig（不存在或 id 全部为空时返回 None）。"""
         stmt = select(PojuConfig).order_by(PojuConfig.id.asc())
         return (await self.session.execute(stmt)).scalars().first()
+
+    async def _upsert_student_profile(
+        self,
+        *,
+        camp_id: int,
+        poju_student_id: str,
+        profile: dict[str, Any],
+        last_synced_at: datetime,
+    ) -> bool:
+        """按 (camp_id, poju_student_id) upsert Student 档案全字段。
+
+        与历史最小同步路径（_upsert_student）不同：本方法写迁移 0004 起的所有
+        扩展字段，且对 None 字段保持"缺失则保留本地值"的语义（不向下覆盖
+        已存在数据），符合 PRD BR-F3.2-3 / 用户要求"覆盖式更新从接口来的
+        最新数据，但本地独有的快照不被回滚"。
+
+        Args:
+            camp_id: 行动营 ID。
+            poju_student_id: 破局学员 UUID。
+            profile: _normalize_people() 标准化的字段字典。
+            last_synced_at: 同步时间戳。
+
+        Returns:
+            True 表示新增；False 表示更新。
+        """
+        stmt = select(Student).where(
+            and_(Student.camp_id == camp_id, Student.poju_student_id == poju_student_id)
+        )
+        student = (await self.session.execute(stmt)).scalar_one_or_none()
+
+        # 字段映射：profile key → Student column
+        # 仅当 profile[key] 非 None 时覆盖本地值（不向下覆盖）
+        upsert_fields: list[str] = [
+            "full_name", "wechat_id", "phone", "wechat_name",
+            "user_name", "user_number",
+            "leader_name", "leader_user_name", "leader_wechat_id",
+            "volunteer_name", "volunteer_user_name", "volunteer_wechat_id",
+            "data_officer_name", "data_officer_user_name", "data_officer_wechat_id",
+            "clock_in_count", "camp_days",
+        ]
+
+        if student is None:
+            # 新增：nickname/wechat 优先用 profile 的 fullName / wechatId
+            nickname = profile.get("nickname") or profile.get("full_name") or poju_student_id
+            student = Student(
+                camp_id=camp_id,
+                poju_student_id=poju_student_id,
+                nickname=nickname,
+                wechat=profile.get("wechat") or profile.get("wechat_id"),
+                last_synced_at=last_synced_at,
+            )
+            for f in upsert_fields:
+                v = profile.get(f)
+                if v is not None:
+                    setattr(student, f, v)
+            self.session.add(student)
+            await self.session.flush()
+            return True
+
+        # 已存在：覆盖式更新（仅在 profile 提供新值时覆盖）
+        new_nick = profile.get("nickname") or profile.get("full_name")
+        if new_nick:
+            student.nickname = new_nick
+        new_wechat = profile.get("wechat") or profile.get("wechat_id")
+        if new_wechat:
+            student.wechat = new_wechat
+        for f in upsert_fields:
+            v = profile.get(f)
+            if v is not None:
+                setattr(student, f, v)
+        student.last_synced_at = last_synced_at
+        await self.session.flush()
+        return False
 
     async def _upsert_student(
         self,

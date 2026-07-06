@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Card,
@@ -12,15 +12,34 @@ import {
   Table,
   Tag,
   Tooltip,
+  Modal,
   App as AntApp,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { SyncOutlined, SearchOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons';
+import {
+  SyncOutlined,
+  SearchOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  TeamOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useCamp } from '@/hooks/useCamps';
-import { useStudents, useSyncBoard, usePendingGrades } from '@/hooks/useVolunteer';
+import {
+  useStudents,
+  useSyncBoard,
+  usePendingGrades,
+  useInitArchive,
+  useRefreshArchive,
+} from '@/hooks/useVolunteer';
 import DeleteCampButton from '@/components/DeleteCampButton';
-import type { StudentStatus, StudentSummary } from '@/api/types';
+import type {
+  InitResult,
+  PendingGradeOut,
+  StudentStatus,
+  StudentSummary,
+} from '@/api/types';
 
 /**
  * P6 志愿者·学员看板（design.md 6.P6 + ui-prototype #volunteer-dashboard）。
@@ -44,17 +63,21 @@ export default function VolunteerDashboard() {
 
   // 营详情（用于副标题与营名）
   const { data: camp, isLoading: campLoading } = useCamp(campId);
-  // 待评改列表（用于统计「待评改」数量与今日打卡近似值）
+  // 待评改列表（每条 = 一条 CheckinRecord；营未开始时应为空）
   const { data: pendingGrades } = usePendingGrades(campId);
 
   // 当前 Tab：'all' | 'pending' | 'insufficient' | 'graded'
+  //  - 'pending' → 真·待评改打卡列表（/grades/pending）
+  //  - 其他       → 学员维度看板（/students?status=...）
+  // 见 archive_service._grading_status_from_valid_days：营未开始时所有学员都会落到
+  // 'pending'，与「真·待评改打卡」语义错位（本 bug 修复点）。
   const [tab, setTab] = useState<TabKey>('all');
   // 学员昵称搜索（前端过滤）
   const [searchText, setSearchText] = useState('');
 
-  // 根据 tab 决定传给 useStudents 的 status（map 到后端 StudentStatus）
+  // 待评改 tab 不走学员列表——它是「按打卡记录」维度；其余 tab 走学员看板。
   const studentStatus = useMemo<StudentStatus | undefined>(() => {
-    if (tab === 'pending') return 'ongoing';
+    if (tab === 'pending') return undefined; // 待评改由 usePendingGrades 单独渲染
     if (tab === 'insufficient') return 'unqualified';
     if (tab === 'graded') return 'qualified';
     return undefined;
@@ -67,28 +90,35 @@ export default function VolunteerDashboard() {
 
   // 手动同步
   const syncMut = useSyncBoard(campId ?? -1);
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
+
+  // 初始化 / 刷新学员档案（拉破局 query-people）
+  const initMut = useInitArchive(campId ?? -1);
+  const refreshMut = useRefreshArchive(campId ?? -1);
 
   // 全部学员（用于 Tab 数量徽章 + 统计）
   const { data: allStudents } = useStudents(campId);
 
-  // 四个 Tab 的数量（来自不带筛选的列表）
+  // 四个 Tab 的数量：
+  //  - pending：真·待评改数（= pendingGrades 长度，营未开始为 0）
+  //  - others：来自学员列表的 status 过滤
   const counts = useMemo(() => {
     const list = allStudents ?? [];
     return {
       all: list.length,
-      pending: list.filter((s) => s.status === 'ongoing').length,
+      pending: (pendingGrades ?? []).length,
       insufficient: list.filter((s) => s.status === 'unqualified').length,
       graded: list.filter((s) => s.status === 'qualified').length,
     };
-  }, [allStudents]);
-
-  // 统计卡：今日已打卡近似 = 待评改数 + 已评改有效数（已存在今日提交但未评改 / 已评改）
-  const todayCheckedInCount = useMemo(() => {
-    const list = allStudents ?? [];
-    // 进行中 / 已达标（已提交了今日）都算已打卡
-    return list.filter((s) => s.status !== 'unqualified' || hasPendingToday(s, pendingGrades)).length;
   }, [allStudents, pendingGrades]);
+
+  // 今日已打卡近似 = 待评改列表数（它们都是已提交但未/刚评的）+ 历史已评改中
+  // 今日的暂未通过其他接口拉，留作 MVP 简化（接口已存在 /grading_audit/today
+  // 时可接入）。营未开始时 pendingGrades 为空 → 自然落到 0。
+  const todayCheckedInCount = useMemo(
+    () => (pendingGrades ?? []).length,
+    [pendingGrades]
+  );
 
   // 同步处理
   const handleSync = async () => {
@@ -106,6 +136,122 @@ export default function VolunteerDashboard() {
     }
   };
 
+  /**
+   * 初始化 / 刷新学员档案入口。
+   *
+   * - mode='init'    → POST /archive/init
+   * - mode='refresh' → POST /archive/refresh（覆盖式更新，不影响打卡记录）
+   *
+   * 弹 modal.confirm 二次确认；确认后调 mutation；成功调 showArchiveResult 展示明细。
+   */
+  const handleArchiveAction = (mode: 'init' | 'refresh') => {
+    if (!campId) return;
+    const isInit = mode === 'init';
+    modal.confirm({
+      title: isInit ? '初始化学员档案' : '刷新学员档案',
+      content: isInit
+        ? '将调用破局 query-people 按当前 actionId 拉取本期全部学员并写入本地档案。学员档案与打卡记录互不干扰，但本期一旦执行可重复点击"刷新"覆盖更新。'
+        : '刷新将按 (camp, poju_student_id) 覆盖式更新本地扩展字段（昵称/微信/电话/打卡次数等）。不影响打卡记录与历史评改。',
+      okText: isInit ? '确定初始化' : '确定刷新',
+      cancelText: '取消',
+      okButtonProps: {
+        loading: isInit ? initMut.isPending : refreshMut.isPending,
+      },
+      onOk: async () => {
+        try {
+          const res = isInit
+            ? await initMut.mutateAsync()
+            : await refreshMut.mutateAsync();
+          showArchiveResult(res, isInit ? '初始化完成' : '刷新完成');
+          refetch();
+        } catch {
+          // 已由 hook 内 toastOnBizError 处理
+        }
+      },
+    });
+  };
+
+  /** 将 InitResult 用 Modal.info 展示明细（含 errors 列表） */
+  const showArchiveResult = (res: InitResult, title: string) => {
+    const total = res.imported + res.updated;
+    const summary = (
+      <div style={{ lineHeight: 1.8 }}>
+        <div>
+          共处理 <strong>{total}</strong> 名学员
+          （新增 <strong>{res.imported}</strong>，更新{' '}
+          <strong>{res.updated}</strong>
+          {res.skipped > 0 && (
+            <>
+              ，跳过 <strong>{res.skipped}</strong>
+            </>
+          )}
+          ）
+        </div>
+        {res.total_from_poju > total && (
+          <div style={{ color: 'var(--text-sub)', fontSize: 12 }}>
+            破局接口总条数 {res.total_from_poju}，已遍历{' '}
+            {res.pages_fetched} 页
+          </div>
+        )}
+        {res.errors.length > 0 && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: '8px 12px',
+              borderRadius: 6,
+              background: 'var(--warning-bg, #fef3c7)',
+              color: '#92400e',
+              fontSize: 12,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              以下分页失败（已跳过并继续翻页）：
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {res.errors.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+    Modal.info({
+      title,
+      content: summary,
+      okText: '我知道了',
+      width: 480,
+    });
+  };
+
+  /**
+   * 入页检查 sessionStorage 是否有"待初始化"标记。
+   * CreateCamp 创建志愿者营（且填了 actionId）后会写入；这里消费并清理。
+   * 仅在尚未初始化（students 为空）时弹，避免无意义打扰。
+   */
+  useEffect(() => {
+    if (!campId) return;
+    let pendingId: string | null = null;
+    try {
+      pendingId = sessionStorage.getItem('pending_init_camp_id');
+    } catch {
+      // 忽略
+    }
+    if (pendingId && pendingId === String(campId) && !studentsLoading) {
+      try {
+        sessionStorage.removeItem('pending_init_camp_id');
+      } catch {
+        // 忽略
+      }
+      const listEmpty = (allStudents?.length ?? 0) === 0;
+      if (listEmpty) {
+        // 用 setTimeout 推到下一个 tick，避免 Modal 与首次渲染抢焦点
+        setTimeout(() => handleArchiveAction('init'), 100);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campId, studentsLoading, allStudents?.length]);
+
   // 搜索过滤后的学员列表
   const filteredStudents = useMemo(() => {
     if (!students) return [];
@@ -115,6 +261,18 @@ export default function VolunteerDashboard() {
       (s) => s.nickname.toLowerCase().includes(kw) || (s.wechat ?? '').toLowerCase().includes(kw)
     );
   }, [students, searchText]);
+
+  // 待评改打卡列表的搜索过滤（学员昵称 / day_number）
+  const filteredPendingGrades = useMemo(() => {
+    const list = pendingGrades ?? [];
+    const kw = searchText.trim().toLowerCase();
+    if (!kw) return list;
+    return list.filter(
+      (p) =>
+        p.student_nickname.toLowerCase().includes(kw) ||
+        String(p.day_number).includes(kw)
+    );
+  }, [pendingGrades, searchText]);
 
   // 最近一次同步时间（取列表中最新一条 last_synced_at）
   const lastSyncedAt = useMemo(() => {
@@ -201,6 +359,34 @@ export default function VolunteerDashboard() {
               定时同步：每日 09:00
             </Tag>
           </Tooltip>
+          {/* 初始化学员档案 / 刷新学员档案：列表为空显示主按钮，否则用次按钮。
+             仅在用户填过 actionId 时启用；否则引导用户先到 CreateCamp 填写。 */}
+          {camp.poju_action_id ? (
+            (allStudents?.length ?? 0) === 0 ? (
+              <Button
+                type="primary"
+                icon={<TeamOutlined />}
+                loading={initMut.isPending}
+                onClick={() => handleArchiveAction('init')}
+              >
+                初始化学员档案
+              </Button>
+            ) : (
+              <Button
+                icon={<ReloadOutlined />}
+                loading={refreshMut.isPending}
+                onClick={() => handleArchiveAction('refresh')}
+              >
+                刷新学员档案
+              </Button>
+            )
+          ) : (
+            <Tooltip title="请到创建营页面填写破局 actionId 后再初始化">
+              <Button icon={<TeamOutlined />} disabled>
+                初始化学员档案
+              </Button>
+            </Tooltip>
+          )}
           <Button
             type="primary"
             icon={<SyncOutlined />}
@@ -279,15 +465,27 @@ export default function VolunteerDashboard() {
           />
         </div>
 
-        {/* 表格 */}
-        <StudentTable
-          loading={studentsLoading}
-          data={filteredStudents}
-          campId={campId}
-          minDays={camp.min_checkin_days}
-        />
+        {/* 表格：待评改 tab 用真·待评改打卡列表；其他 tab 用学员看板 */}
+        {tab === 'pending' ? (
+          <PendingGradeTable
+            loading={!pendingGrades && !!campId}
+            data={filteredPendingGrades}
+            campId={campId}
+          />
+        ) : (
+          <StudentTable
+            loading={studentsLoading}
+            data={filteredStudents}
+            campId={campId}
+            minDays={camp.min_checkin_days}
+          />
+        )}
         <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 12 }}>
-          显示 {filteredStudents.length} / {students?.length ?? 0} 名学员
+          {tab === 'pending' ? (
+            <>显示 {filteredPendingGrades.length} / {pendingGrades?.length ?? 0} 条待评改打卡</>
+          ) : (
+            <>显示 {filteredStudents.length} / {students?.length ?? 0} 名学员</>
+          )}
         </div>
       </Card>
     </div>
@@ -324,6 +522,84 @@ interface StudentTableProps {
   data: StudentSummary[];
   campId: number | undefined;
   minDays: number;
+}
+
+/** 待评改打卡列表：每行 = 一条待评 CheckinRecord；点击行进入评改页。 */
+function PendingGradeTable({
+  loading,
+  data,
+  campId,
+}: {
+  loading: boolean;
+  data: PendingGradeOut[];
+  campId: number | undefined;
+}) {
+  const columns: ColumnsType<PendingGradeOut> = [
+    {
+      title: '学员',
+      dataIndex: 'student_nickname',
+      key: 'student_nickname',
+      width: 140,
+      render: (nick: string) => <span style={{ fontWeight: 600 }}>{nick}</span>,
+    },
+    {
+      title: 'Day',
+      dataIndex: 'day_number',
+      key: 'day_number',
+      width: 70,
+      render: (d: number) => `Day${d}`,
+    },
+    {
+      title: '提交日期',
+      dataIndex: 'checkin_date',
+      key: 'checkin_date',
+      width: 120,
+    },
+    {
+      title: '提交时间',
+      dataIndex: 'submitted_at',
+      key: 'submitted_at',
+      width: 150,
+      render: (t: string | null | undefined) =>
+        t ? dayjs(t).format('MM/DD HH:mm') : <span style={{ color: 'var(--text-light)' }}>—</span>,
+    },
+    {
+      title: '打卡摘要',
+      dataIndex: 'content',
+      key: 'content',
+      ellipsis: true,
+      render: (c: string | null | undefined) =>
+        c ? c : <span style={{ color: 'var(--text-light)' }}>（无内容）</span>,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 120,
+      render: (_: unknown, row) => (
+        <Link
+          to={`/camp/${campId}/volunteer/grade?camp=${campId}&student=${row.student_id}&checkin=${row.checkin_id}`}
+        >
+          <Button type="primary" size="small" icon={<EditOutlined />}>
+            去评改
+          </Button>
+        </Link>
+      ),
+    },
+  ];
+
+  if (!loading && data.length === 0) {
+    return <Empty description="暂无待评改打卡" style={{ padding: '32px 0' }} />;
+  }
+  return (
+    <Table<PendingGradeOut>
+      rowKey="checkin_id"
+      loading={loading}
+      dataSource={data}
+      columns={columns}
+      pagination={false}
+      size="middle"
+    />
+  );
 }
 
 /** 学员表格：根据 status 派生徽章颜色与距目标文案。 */
@@ -469,22 +745,4 @@ function StatusBadge({ status }: { status: StudentStatus }) {
   if (status === 'unqualified') return <Tag color="red">打卡不足</Tag>;
   if (status === 'qualified') return <Tag color="green">已评改</Tag>;
   return <Tag>{status}</Tag>;
-}
-
-// ---------------------------------------------------------------------------
-// 工具函数
-// ---------------------------------------------------------------------------
-
-/**
- * 判断学员是否今日已提交打卡（用于「今日已打卡」统计近似）。
- *
- * 后端 StudentSummary 不直接含「今日是否已打卡」字段，故借助 usePendingGrades
- * 推导：若该学员出现在待评改列表中，则视为今日已提交；否则按状态粗略推断。
- */
-function hasPendingToday(
-  student: StudentSummary,
-  pendingGrades: { student_id: number }[] | undefined
-): boolean {
-  if (!pendingGrades) return false;
-  return pendingGrades.some((p) => p.student_id === student.id);
 }

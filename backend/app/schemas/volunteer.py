@@ -18,7 +18,15 @@ StudentStatus = Literal["ongoing", "qualified", "unqualified"]
 
 
 class StudentSummary(BaseModel):
-    """学员看板摘要。"""
+    """学员看板摘要。
+
+    - 基础汇总字段：id / camp_id / nickname / wechat / current_day / valid_days /
+      gap_to_min / last_stars / status / last_synced_at
+    - 档案扩展字段（迁移 0004 起，从破局 query-people 拉取）：
+      学员本人（full_name / wechat_id / phone / wechat_name / user_name /
+      user_number）+ 组长（leader_*）+ 志愿者（volunteer_*）+ 数据官
+      （data_officer_*）+ 打卡统计（clock_in_count / camp_days）。
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,6 +44,33 @@ class StudentSummary(BaseModel):
     )
     status: StudentStatus
     last_synced_at: Optional[datetime] = None
+
+    # ====== 学员本人（破局 query-people）======
+    full_name: Optional[str] = Field(default=None, description="姓名")
+    wechat_id: Optional[str] = Field(default=None, description="微信号")
+    phone: Optional[str] = Field(default=None, description="手机号")
+    wechat_name: Optional[str] = Field(default=None, description="微信昵称")
+    user_name: Optional[str] = Field(default=None, description="破局登录账号")
+    user_number: Optional[str] = Field(default=None, description="破局编号")
+
+    # ====== 组长 ======
+    leader_name: Optional[str] = Field(default=None, description="组长姓名")
+    leader_user_name: Optional[str] = Field(default=None, description="组长账号")
+    leader_wechat_id: Optional[str] = Field(default=None, description="组长微信")
+
+    # ====== 志愿者 ======
+    volunteer_name: Optional[str] = Field(default=None, description="志愿者姓名")
+    volunteer_user_name: Optional[str] = Field(default=None, description="志愿者账号")
+    volunteer_wechat_id: Optional[str] = Field(default=None, description="志愿者微信")
+
+    # ====== 数据官 ======
+    data_officer_name: Optional[str] = Field(default=None, description="数据官姓名")
+    data_officer_user_name: Optional[str] = Field(default=None, description="数据官账号")
+    data_officer_wechat_id: Optional[str] = Field(default=None, description="数据官微信")
+
+    # ====== 打卡统计 ======
+    clock_in_count: Optional[int] = Field(default=None, description="已打卡次数（破局 clockInCount）")
+    camp_days: Optional[int] = Field(default=None, description="行动营总天数（破局 campDays）")
 
 
 class ArchiveTimelineItem(BaseModel):
@@ -120,5 +155,27 @@ class SyncResult(BaseModel):
     """同步破局结果。"""
 
     success: bool
+    message: str
+    synced_at: Optional[datetime] = Field(default=None, description="同步时间(成功时)")
+
+
+class InitResult(BaseModel):
+    """初始化/刷新学员档案的结果。
+
+    - imported：本次新增的 Student 行数
+    - updated：本次更新已有 Student 的行数（按 (camp_id, poju_student_id) upsert）
+    - total_from_poju：破局 query-people 接口返回的 total
+    - pages_fetched：成功遍历的页数（含空页停页）
+    - skipped：因 poju_student_id 缺失而跳过的条目数
+    - errors：分页失败明细（UI 可直接展示）
+    """
+
+    success: bool
+    imported: int = 0
+    updated: int = 0
+    skipped: int = 0
+    total_from_poju: int = 0
+    pages_fetched: int = 0
+    errors: list[str] = Field(default_factory=list)
     message: str
     synced_at: Optional[datetime] = Field(default=None, description="同步时间(成功时)")

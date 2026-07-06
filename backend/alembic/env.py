@@ -27,7 +27,7 @@ if config.config_file_name is not None:
 logger = logging.getLogger("alembic.env")
 
 # 导入 Base 与全部模型，确保 Base.metadata 包含所有表
-from app.database import Base  # noqa: E402
+from app.database import Base, ensure_db_dir  # noqa: E402
 from app.config import get_settings  # noqa: E402
 
 try:  # pragma: no cover - 模型未实现时不应阻断 alembic 基础功能
@@ -70,8 +70,11 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """在线模式：连接数据库执行迁移。"""
+    sync_url = _get_sync_url()
+    # 确保 data/ 目录存在，避免首次迁移时 SQLite 因父目录缺失报错
+    ensure_db_dir(sync_url)
     # 注入同步 URL
-    config.set_main_option("sqlalchemy.url", _get_sync_url())
+    config.set_main_option("sqlalchemy.url", sync_url)
 
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),

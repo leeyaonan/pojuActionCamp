@@ -21,6 +21,12 @@ dist/
 data/
 *.log
 
+# SQLite 数据库（含真实业务数据，严禁入库；表结构由 alembic 迁移管理）
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
 # IDE
 .vscode/
 .idea/

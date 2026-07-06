@@ -26,6 +26,11 @@ class CampBase(BaseModel):
     start_date: date = Field(..., description="开始日期")
     end_date: date = Field(..., description="结束日期")
     min_checkin_days: Optional[int] = Field(default=None, gt=0, description="最低打卡完成天数；缺省由 service 按 total_days*0.6 兜底")
+    poju_action_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="破局行动营 ID（actionId，UUID 字符串）。可空，志愿者身份用于对接破局学员列表",
+    )
 
     @field_validator("end_date")
     @classmethod
@@ -65,6 +70,11 @@ class CampUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     min_checkin_days: Optional[int] = Field(default=None, gt=0)
+    poju_action_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="破局行动营 ID（actionId）。传空字符串视为清空，传 None 表示不修改",
+    )
 
 
 class CampOut(CampBase):
@@ -100,4 +110,5 @@ class CampSummary(BaseModel):
     current_day: Optional[int] = None
     valid_days: int = 0
     progress: float = Field(default=0.0, ge=0.0, le=1.0, description="进度比例 current_day/total_days")
+    poju_action_id: Optional[str] = Field(default=None, description="破局行动营 ID（actionId）")
     created_at: datetime

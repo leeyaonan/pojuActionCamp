@@ -44,6 +44,7 @@ type FormValues = {
   total_days: number;
   min_checkin_days: number;
   range: [Dayjs, Dayjs];
+  poju_action_id?: string;
 };
 
 const DEFAULT_TOTAL_DAYS = 30;
@@ -79,12 +80,14 @@ export default function CreateCamp() {
       total_days: DEFAULT_TOTAL_DAYS,
       min_checkin_days: Math.round(DEFAULT_TOTAL_DAYS * MIN_DAYS_RATIO),
       range: [dayjs(), dayjs().add(DEFAULT_TOTAL_DAYS - 1, 'day')],
+      poju_action_id: '',
     }),
     []
   );
 
   const handleFinish = async (values: FormValues) => {
     const [start, end] = values.range;
+    const actionId = values.poju_action_id?.trim();
     const payload = {
       name: values.name.trim(),
       role: values.role,
@@ -93,10 +96,21 @@ export default function CreateCamp() {
       start_date: start.format('YYYY-MM-DD'),
       end_date: end.format('YYYY-MM-DD'),
       min_checkin_days: values.min_checkin_days,
+      poju_action_id: actionId ? actionId : undefined,
     };
     try {
       const camp = await mutation.mutateAsync(payload);
       message.success(`已创建行动营：${camp.name}`);
+      // 志愿者身份 + 已填 actionId → 通知 Dashboard 自动弹窗"是否立即初始化档案"。
+      // 用 sessionStorage 而非 query，避免 URL 暴露内部状态；Dashboard 进入时
+      // 自动清理。
+      if (camp.role === 'volunteer' && actionId && camp.id) {
+        try {
+          sessionStorage.setItem('pending_init_camp_id', String(camp.id));
+        } catch {
+          // 忽略 sessionStorage 不可用（隐私模式）
+        }
+      }
       const target =
         camp.role === 'student'
           ? `/camp/${camp.id}/student`
@@ -185,12 +199,12 @@ export default function CreateCamp() {
           <Form.Item
             label="简介"
             name="description"
-            rules={[{ max: 200, message: '简介最多 200 字' }]}
+            rules={[{ max: 500, message: '简介最多 500 字' }]}
           >
             <Input.TextArea
               placeholder="本期主题、训练目标……"
               autoSize={{ minRows: 3, maxRows: 6 }}
-              maxLength={200}
+              maxLength={500}
               showCount
             />
           </Form.Item>
@@ -282,6 +296,32 @@ export default function CreateCamp() {
               format="YYYY-MM-DD"
               allowClear={false}
             />
+          </Form.Item>
+
+          {/* 6. 破局行动营 ID（actionId），所有身份均可填；非必填 */}
+          <Form.Item
+            label="破局行动营 ID（actionId）"
+            name="poju_action_id"
+            extra={
+              <span style={{ color: 'var(--text-sub)', fontSize: 12 }}>
+                可选。在破局平台行动营详情页 URL 中查看（UUID 格式）。志愿者身份用于后续"初始化学员档案"
+              </span>
+            }
+            rules={[
+              { max: 64, message: '最多 64 字符' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value) return Promise.resolve();
+                  const trimmed = String(value).trim();
+                  if (trimmed && !/^[0-9a-fA-F-]{8,64}$/.test(trimmed)) {
+                    return Promise.reject(new Error('actionId 格式不正确（应为 UUID）'));
+                  }
+                  return Promise.resolve();
+                },
+              }),
+            ]}
+          >
+            <Input placeholder="例如：a8e2f51d-b83e-4721-9d44-9a9a92c7af1e" allowClear />
           </Form.Item>
 
           {/* 提示条 */}

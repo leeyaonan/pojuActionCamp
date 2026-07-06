@@ -11,6 +11,7 @@ SQLAlchemy 2.0 异步引擎 + 会话工厂 + 声明式基类。
 额外提供异步引擎与会话工厂，向后兼容。
 """
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -27,6 +28,24 @@ class Base(DeclarativeBase):
 
 
 settings = get_settings()
+
+
+def ensure_db_dir(url: str) -> None:
+    """确保 SQLite 数据库文件所在目录存在。
+
+    SQLite 不会自动创建父目录，若 ``data/`` 缺失会在建库/连接时报
+    ``unable to open database file``。此处从 DATABASE_URL 解析出文件路径并预建父目录，
+    方便新人 clone 后直接 ``alembic upgrade head`` 或启动应用即可使用。
+    """
+    for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
+        if url.startswith(prefix):
+            db_path = Path(url[len(prefix):])
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            return
+
+
+# 预建数据目录（默认 data/），避免首次建库/连接时因目录缺失报错
+ensure_db_dir(settings.async_database_url)
 
 # 异步引擎：sqlite+aiosqlite:///，供 aiosqlite 异步驱动使用
 engine = create_async_engine(

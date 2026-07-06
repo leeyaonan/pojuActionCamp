@@ -1,14 +1,16 @@
 """志愿者功能路由（空桩 + W2 archive 阶段实现）。
 
-- POST /camps/{id}/sync           手动触发同步
-- GET  /camps/{id}/students       学员看板列表（支持筛选）
-- GET  /students/{id}             学员档案
-- GET  /camps/{id}/grades/pending 待评改列表
-- POST /grades/generate           生成评改
-- POST /grades/confirm            确认并同步
-- POST /grades/save-draft         仅保存评改（不同步破局）— BUG-VOL-006
-- POST /grades/{id}/retry         重试同步
-- POST /grades/regenerate         重新生成评改
+- POST /camps/{id}/sync                  手动触发同步（拉打卡）
+- POST /camps/{id}/archive/init          初始化档案（拉学员名单）
+- POST /camps/{id}/archive/refresh       刷新档案（覆盖式更新）
+- GET  /camps/{id}/students              学员看板列表（支持筛选）
+- GET  /students/{id}                    学员档案
+- GET  /camps/{id}/grades/pending        待评改列表
+- POST /grades/generate                  生成评改
+- POST /grades/confirm                   确认并同步
+- POST /grades/save-draft                仅保存评改（不同步破局）— BUG-VOL-006
+- POST /grades/{id}/retry                重试同步
+- POST /grades/regenerate                重新生成评改
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from app.schemas.volunteer import (
     GradeConfirmIn,
     GradeDraftOut,
     GradeGenerateIn,
+    InitResult,
     PendingGradeOut,
     StudentArchive,
     StudentStatus,
@@ -112,6 +115,44 @@ async def list_board_students(
     )
     data = [item.model_dump(mode="json") for item in items]
     return success(data)
+
+
+@router.post(
+    "/camps/{camp_id}/archive/init",
+    response_model=None,
+    summary="初始化学员档案（拉破局名单 → upsert）",
+)
+async def init_volunteer_archive(
+    camp_id: int = Path(..., gt=0, description="行动营 ID（志愿者营）"),
+    service: ArchiveService = Depends(_archive_service),
+) -> dict:
+    """从破局 query-people 拉本期学员名单并 upsert 到 students 表。
+
+    - camp 必须为志愿者身份。
+    - camp.poju_action_id 必须已填写（否则抛 1001）。
+    - 单页网络/业务错误被跳过并写入 InitResult.errors，不阻断。
+    - 不动 checkin_records（与打卡同步完全解耦）。
+    - PojuAuthError 由统一异常处理器映射为 401。
+    """
+    result: InitResult = await service.init_volunteer_archive(camp_id)
+    return success(result.model_dump(mode="json"))
+
+
+@router.post(
+    "/camps/{camp_id}/archive/refresh",
+    response_model=None,
+    summary="刷新学员档案（覆盖式更新）",
+)
+async def refresh_volunteer_archive(
+    camp_id: int = Path(..., gt=0, description="行动营 ID（志愿者营）"),
+    service: ArchiveService = Depends(_archive_service),
+) -> dict:
+    """刷新本期学员档案，按 (camp_id, poju_student_id) 覆盖式更新扩展字段。
+
+    与 init_volunteer_archive 实现相同，仅 API 语义不同（UI 用以区分按钮）。
+    """
+    result: InitResult = await service.refresh_volunteer_archive(camp_id)
+    return success(result.model_dump(mode="json"))
 
 
 @router.get(

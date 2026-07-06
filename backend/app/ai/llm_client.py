@@ -1,21 +1,27 @@
 """大模型客户端封装。
 
-按技术方案 6.2 实现，统一封装 anthropic / openai SDK：
+按 AI 模型配置技术方案 §4 实现，统一封装 anthropic / openai SDK：
 
-- ``__init__`` 按 provider 初始化对应 SDK 客户端。
+- ``__init__`` 按 provider 初始化对应 SDK 客户端，支持自定义 ``base_url``（接入
+  国内厂商必需）。``provider`` 接受 ``anthropic`` / ``openai`` / ``openai_compatible``，
+  其中 ``openai_compatible`` 归一化为 openai 分支（DeepSeek / GLM / MiniMax 走此协议），
+  ``anthropic`` 走 anthropic 分支（LongCat 走此协议）。
 - ``chat`` 非流式调用：传 ``response_schema`` 时强制结构化输出并 Pydantic 校验，
-  anthropic 用 tool_use 强制 JSON，openai 用 ``response_format=json_schema``。
+  anthropic 用 tool_use 强制 JSON（不支持时降级纯 JSON 解析），openai 用
+  ``response_format=json_schema``（strict 失败时降级 prompt 要求 JSON + 文本解析）。
   校验失败按指数退避重试，最多 3 次。
 - ``chat_stream`` 流式异步生成器，yield 增量文本。
 - 超时与异常统一抛 ``LLMError``（对应错误码 3001）。
-- ``get_llm_client(settings)`` 工厂，缓存单例。
+- ``get_llm_client(provider, api_key, model, timeout, base_url)`` 工厂，按
+  (provider, base_url, api_key, model, timeout) 缓存单例；``reset_llm_client_singleton``
+  供激活切换时清空缓存，确保下次按新配置重建。
 
 说明：
 - anthropic SDK 与 openai SDK 均为同步客户端，这里用 ``anyio.to_thread.run_sync``
   把同步调用包到线程中执行，避免阻塞 asyncio 事件循环；流式则把同步迭代器
   的逐块产出经队列回传到事件循环后 yield。
-- 配置项来自 ``settings``（app/config.py 提供）：``llm_provider`` / ``llm_api_key``
-  / ``llm_model`` / ``llm_timeout``。
+- 配置来源：DB 激活厂商（LLMSettingsService.get_active_client）优先，无激活时
+  由调用方回退 ``.env`` 的 ``LLM_*`` 配置（见技术方案 §6）。
 """
 
 import asyncio
@@ -53,13 +59,17 @@ class LLMClient:
     Parameters
     ----------
     provider:
-        ``"anthropic"`` 或 ``"openai"``。
+        ``"anthropic"`` / ``"openai"`` / ``"openai_compatible"``。
+        ``openai_compatible`` 与 ``openai`` 等价（归一化为 openai 分支）。
     api_key:
         对应 provider 的 API Key。
     model:
-        模型名，如 ``claude-sonnet-4-6``、``gpt-4o``。
+        模型名，如 ``deepseek-v4-flash``、``glm-4.7-flash``、``LongCat-2.0``。
     timeout:
         请求超时秒数。
+    base_url:
+        接入地址（SDK base_url）。国内厂商必填，如
+        ``https://api.deepseek.com``、``https://api.longcat.chat/anthropic``。
     """
 
     def __init__(
@@ -68,25 +78,37 @@ class LLMClient:
         api_key: str,
         model: str,
         timeout: int = 60,
+        base_url: Optional[str] = None,
     ) -> None:
-        self.provider = provider.lower()
+        raw = (provider or "").lower()
+        if raw in ("openai", "openai_compatible"):
+            self.provider = "openai"
+        elif raw == "anthropic":
+            self.provider = "anthropic"
+        else:
+            raise LLMError(f"不支持的 llm_provider: {provider}")
         self.model = model
         self.timeout = timeout
+        self.base_url = base_url
 
         if self.provider == "anthropic":
             try:
                 import anthropic  # type: ignore
             except ImportError as e:  # pragma: no cover
                 raise LLMError("未安装 anthropic SDK，请 pip install anthropic") from e
-            self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
-        elif self.provider == "openai":
+            kwargs: dict[str, Any] = {"api_key": api_key, "timeout": timeout}
+            if base_url:
+                kwargs["base_url"] = base_url
+            self._client = anthropic.Anthropic(**kwargs)
+        else:  # openai / openai_compatible
             try:
                 import openai  # type: ignore
             except ImportError as e:  # pragma: no cover
                 raise LLMError("未安装 openai SDK，请 pip install openai") from e
-            self._client = openai.OpenAI(api_key=api_key, timeout=timeout)
-        else:
-            raise LLMError(f"不支持的 llm_provider: {provider}")
+            kwargs = {"api_key": api_key, "timeout": timeout}
+            if base_url:
+                kwargs["base_url"] = base_url
+            self._client = openai.OpenAI(**kwargs)
 
     # ------------------------------------------------------------------ #
     # 非流式：chat
@@ -224,7 +246,9 @@ class LLMClient:
         """强制结构化输出并用 Pydantic 校验。
 
         - anthropic：用 tool_use 强制返回 JSON，从 tool_input 提取后校验。
-        - openai：用 ``response_format={"type": "json_schema", ...}`` 约束。
+          协议代理不支持 tool_use 时降级为纯文本 JSON 解析。
+        - openai：优先用 ``response_format={"type": "json_schema", "strict": True}``；
+          厂商不支持 strict json_schema 时降级为 prompt 要求 JSON + 文本解析。
         校验失败抛 ValidationError（由上层 chat 重试）。
         """
         schema_json = schema.model_json_schema()
@@ -277,30 +301,59 @@ class LLMClient:
                 return schema.model_validate(data)
 
         else:
-            # openai json_schema 结构化输出
-            resp = await anyio.to_thread.run_sync(
-                lambda: self._client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "system", "content": system}, *messages],
-                    temperature=temperature,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": schema.__name__,
-                            "schema": _json_schema_to_strict(schema_json),
-                            "strict": True,
-                        },
-                    },
-                )
-            )
-            content = resp.choices[0].message.content or ""
+            # openai：优先 strict json_schema，失败降级 prompt + 文本解析
             try:
+                resp = await anyio.to_thread.run_sync(
+                    lambda: self._client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "system", "content": system}, *messages],
+                        temperature=temperature,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": schema.__name__,
+                                "schema": _json_schema_to_strict(schema_json),
+                                "strict": True,
+                            },
+                        },
+                    )
+                )
+                content = resp.choices[0].message.content or ""
                 data = json.loads(content)
-            except json.JSONDecodeError as e:
-                raise ValidationError.from_exception_data(
-                    f"响应非合法 JSON: {e}", []
-                ) from e
-            return schema.model_validate(data)
+                return schema.model_validate(data)
+            except Exception as e:
+                # 厂商不支持 strict json_schema（报错或忽略）→ 降级：prompt 要求 JSON + 文本解析
+                logger.warning(
+                    "strict json_schema 失败，降级纯 JSON 解析: %s", e
+                )
+                prompted = (
+                    system
+                    + "\n\n必须返回严格符合下述 JSON Schema 的 JSON 对象，"
+                    "不要任何额外文本、不要 markdown 代码块包裹：\n"
+                    + json.dumps(schema_json, ensure_ascii=False)
+                )
+                resp = await anyio.to_thread.run_sync(
+                    lambda: self._client.chat.completions.create(
+                        model=self.model,
+                        messages=[{"role": "system", "content": prompted}, *messages],
+                        temperature=temperature,
+                    )
+                )
+                content = resp.choices[0].message.content or ""
+                # 兜容：剥离 ```json ... ``` 包裹
+                content = content.strip()
+                if content.startswith("```"):
+                    content = content.strip("`")
+                    if content.lower().startswith("json"):
+                        content = content[4:]
+                    content = content.strip()
+                try:
+                    data = json.loads(content)
+                except json.JSONDecodeError as de:
+                    raise ValidationError.from_exception_data(
+                        f"响应非合法 JSON: {de}", []
+                    ) from de
+                return schema.model_validate(data)
 
     # ------------------------------------------------------------------ #
     # 流式实现
@@ -427,25 +480,38 @@ _client_singleton: Optional[LLMClient] = None
 _singleton_key: Optional[tuple] = None
 
 
-def get_llm_client(settings: Any) -> LLMClient:
-    """根据 settings 创建/复用 LLMClient 单例。
+def get_llm_client(
+    provider: str,
+    api_key: str,
+    model: str,
+    timeout: int = 60,
+    base_url: Optional[str] = None,
+) -> LLMClient:
+    """创建/复用 LLMClient 单例。
 
-    settings 需提供：``llm_provider``、``llm_api_key``、``llm_model``、``llm_timeout``。
-    单例按 (provider, api_key, model, timeout) 缓存，配置变化时自动重建。
+    单例按 ``(provider, base_url, api_key, model, timeout)`` 缓存，任一变化即重建。
+    激活厂商切换时，调用方应先 ``reset_llm_client_singleton()`` 清缓存，再由本函数
+    按新配置重建。
     """
     global _client_singleton, _singleton_key
-    key = (
-        settings.llm_provider,
-        settings.llm_api_key,
-        settings.llm_model,
-        settings.llm_timeout,
-    )
+    key = (provider, base_url, api_key, model, timeout)
     if _client_singleton is None or _singleton_key != key:
         _client_singleton = LLMClient(
-            provider=settings.llm_provider,
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            timeout=settings.llm_timeout,
+            provider=provider,
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            base_url=base_url,
         )
         _singleton_key = key
     return _client_singleton
+
+
+def reset_llm_client_singleton() -> None:
+    """清空 LLMClient 单例缓存。
+
+    激活厂商切换 / 厂商配置变更后调用，确保下次 ``get_llm_client`` 按新配置重建。
+    """
+    global _client_singleton, _singleton_key
+    _client_singleton = None
+    _singleton_key = None

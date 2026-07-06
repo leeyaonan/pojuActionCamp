@@ -60,6 +60,8 @@ export interface CampCreate {
   start_date: string; // YYYY-MM-DD
   end_date: string;
   min_checkin_days: number;
+  /** 破局行动营 ID（actionId，UUID 字符串）。可空，志愿者身份用于对接破局学员列表 */
+  poju_action_id?: string | null;
 }
 
 export interface CampUpdate {
@@ -69,6 +71,8 @@ export interface CampUpdate {
   start_date?: string;
   end_date?: string;
   min_checkin_days?: number;
+  /** 破局行动营 ID（actionId）。None/不传=不修改，空串=清除，非空=更新 */
+  poju_action_id?: string | null;
 }
 
 export interface CampOut extends CampCreate {
@@ -78,6 +82,7 @@ export interface CampOut extends CampCreate {
   valid_days: number;
   has_manual: boolean;
   has_route: boolean;
+  poju_action_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +99,7 @@ export interface CampSummary {
   current_day?: number | null;
   valid_days: number;
   progress: number; // 0~1
+  poju_action_id?: string | null;
   created_at: string;
 }
 
@@ -198,6 +204,29 @@ export interface StudentSummary {
   last_stars?: number | null;
   status: StudentStatus;
   last_synced_at?: string | null;
+  // 迁移 0004 起扩展档案字段（破局 query-people 拉取）
+  /** 学员本人 */
+  full_name?: string | null;
+  wechat_id?: string | null;
+  phone?: string | null;
+  wechat_name?: string | null;
+  user_name?: string | null;
+  user_number?: string | null;
+  /** 组长 */
+  leader_name?: string | null;
+  leader_user_name?: string | null;
+  leader_wechat_id?: string | null;
+  /** 志愿者 */
+  volunteer_name?: string | null;
+  volunteer_user_name?: string | null;
+  volunteer_wechat_id?: string | null;
+  /** 数据官 */
+  data_officer_name?: string | null;
+  data_officer_user_name?: string | null;
+  data_officer_wechat_id?: string | null;
+  /** 打卡统计 */
+  clock_in_count?: number | null;
+  camp_days?: number | null;
 }
 
 export interface ArchiveTimelineItem {
@@ -262,6 +291,28 @@ export interface GradeDraftOut {
 
 export interface SyncResult {
   success: boolean;
+  message: string;
+  synced_at?: string | null;
+}
+
+/**
+ * 初始化 / 刷新学员档案（query-people）的结果。
+ *
+ * - imported：本次新增的 Student 行数
+ * - updated：本次按 (camp, poju_student_id) 覆盖更新的行数
+ * - skipped：因 poju_student_id 缺失被整条跳过的记录数
+ * - total_from_poju：破局接口返回的总条数（来自 data.total）
+ * - pages_fetched：实际遍历的页数
+ * - errors：分页失败明细（任意一页网络/业务错都会写入并继续翻页）
+ */
+export interface InitResult {
+  success: boolean;
+  imported: number;
+  updated: number;
+  skipped: number;
+  total_from_poju: number;
+  pages_fetched: number;
+  errors: string[];
   message: string;
   synced_at?: string | null;
 }
@@ -355,4 +406,62 @@ export interface ConnectionResult {
   message: string;
   details?: string | null;
   last_checked_at?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// 大模型厂商配置（AI 模型配置）
+// ---------------------------------------------------------------------------
+
+export type LlmProtocol = 'openai_compatible' | 'anthropic';
+export type LlmActiveSource = 'db' | 'env' | 'none';
+
+export interface LlmProviderOut {
+  id: number;
+  name: string;
+  protocol: LlmProtocol;
+  base_url: string;
+  model: string;
+  models?: string[] | null;
+  api_key_masked?: string | null;
+  has_api_key: boolean;
+  is_preset: boolean;
+  is_active: boolean;
+  key_status: TokenStatus;
+  last_checked_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LlmProviderCreate {
+  name: string;
+  protocol?: LlmProtocol;
+  base_url: string;
+  model: string;
+  models?: string[] | null;
+  api_key?: string | null;
+}
+
+export interface LlmProviderUpdate {
+  name?: string;
+  protocol?: LlmProtocol;
+  base_url?: string;
+  model?: string;
+  models?: string[] | null;
+  /** None/不传=不修改，空串=清除，非空=更新 */
+  api_key?: string | null;
+}
+
+export interface LlmActiveOut {
+  source: LlmActiveSource;
+  id?: number | null;
+  name?: string | null;
+  protocol?: LlmProtocol | null;
+  base_url?: string | null;
+  model?: string | null;
+  is_active: boolean;
+  key_status: TokenStatus;
+  last_checked_at?: string | null;
+  env_provider?: string | null;
+  env_model?: string | null;
+  has_api_key: boolean;
 }

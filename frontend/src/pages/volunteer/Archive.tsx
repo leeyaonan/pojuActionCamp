@@ -3,6 +3,8 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
+  Descriptions,
   Empty,
   Row,
   Skeleton,
@@ -23,7 +25,7 @@ import dayjs from 'dayjs';
 
 import { useStudentArchive } from '@/hooks/useVolunteer';
 import StarPicker from '@/components/StarPicker';
-import type { ArchiveTimelineItem } from '@/api/types';
+import type { ArchiveTimelineItem, StudentSummary } from '@/api/types';
 
 const { Text, Title } = Typography;
 
@@ -84,7 +86,7 @@ export default function VolunteerArchive() {
   };
 
   return (
-    <div style={{ padding: 24}}>
+    <div style={{ padding: 24 }}>
       {/* 页头 */}
       <div
         style={{
@@ -220,6 +222,9 @@ export default function VolunteerArchive() {
             />
           </Row>
 
+          {/* 档案详情（迁移 0004 起的扩展字段） */}
+          <ProfileCard student={data.student} />
+
           {/* 时间线 */}
           <Card
             bordered={false}
@@ -325,6 +330,162 @@ function StatCard({
         </div>
       </Card>
     </Col>
+  );
+}
+
+// ---------- 子组件：档案详情（迁移 0004 起的扩展字段） ----------
+function ProfileCard({ student }: { student: StudentSummary | undefined }) {
+  // 字段为空时统一展示 "-"；空集合判断：所有档案字段全空 → 提示尚未同步档案。
+  const dash = '-';
+  const v = (x?: string | number | null) =>
+    x === null || x === undefined || x === '' ? dash : x;
+
+  const allEmpty =
+    !student ||
+    [
+      student.full_name,
+      student.wechat_id,
+      student.phone,
+      student.wechat_name,
+      student.user_name,
+      student.user_number,
+      student.leader_name,
+      student.leader_user_name,
+      student.leader_wechat_id,
+      student.volunteer_name,
+      student.volunteer_user_name,
+      student.volunteer_wechat_id,
+      student.data_officer_name,
+      student.data_officer_user_name,
+      student.data_officer_wechat_id,
+      student.clock_in_count,
+      student.camp_days,
+    ].every((x) => x === null || x === undefined);
+
+  return (
+    <Card
+      bordered={false}
+      style={{ borderRadius: 10, marginBottom: 16 }}
+      bodyStyle={{ padding: 18 }}
+      title={
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 600 }}>学员档案详情</span>
+          <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>
+            {student?.last_synced_at
+              ? `最近同步 ${dayjs(student.last_synced_at).format('MM/DD HH:mm')}`
+              : ''}
+          </span>
+        </div>
+      }
+    >
+      <Collapse
+        defaultActiveKey={[]}
+        ghost
+        size="small"
+        items={[
+          {
+            key: 'profile',
+            label: (
+              <span style={{ fontSize: 13, color: 'var(--text-sub)' }}>
+                展开查看档案详情（含姓名/微信号/组长/志愿者/数据官/打卡统计）
+              </span>
+            ),
+            children: allEmpty ? (
+              <Empty
+                description={
+                  <span style={{ color: 'var(--text-sub)' }}>
+                    尚未从破局同步学员档案，请先在「学员看板」执行「初始化档案」
+                  </span>
+                }
+                style={{ padding: 16 }}
+              />
+            ) : (
+              <>
+                <Descriptions
+                  size="small"
+                  column={{ xs: 1, sm: 2, md: 3 }}
+                  labelStyle={{ color: 'var(--text-sub)', width: 96 }}
+                  title={
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      学员本人
+                    </span>
+                  }
+                  items={[
+                    { key: 'full_name', label: '姓名', children: v(student?.full_name) },
+                    { key: 'wechat_name', label: '微信昵称', children: v(student?.wechat_name) },
+                    { key: 'wechat_id', label: '微信号', children: v(student?.wechat_id) },
+                    { key: 'phone', label: '手机号', children: v(student?.phone) },
+                    { key: 'user_name', label: '破局账号', children: v(student?.user_name) },
+                    { key: 'user_number', label: '破局编号', children: v(student?.user_number) },
+                  ]}
+                />
+                <Descriptions
+                  size="small"
+                  column={{ xs: 1, sm: 2, md: 3 }}
+                  labelStyle={{ color: 'var(--text-sub)', width: 96 }}
+                  style={{ marginTop: 12 }}
+                  title={
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>组长</span>
+                  }
+                  items={[
+                    { key: 'leader_name', label: '姓名', children: v(student?.leader_name) },
+                    { key: 'leader_user_name', label: '账号', children: v(student?.leader_user_name) },
+                    { key: 'leader_wechat_id', label: '微信', children: v(student?.leader_wechat_id) },
+                  ]}
+                />
+                <Descriptions
+                  size="small"
+                  column={{ xs: 1, sm: 2, md: 3 }}
+                  labelStyle={{ color: 'var(--text-sub)', width: 96 }}
+                  style={{ marginTop: 12 }}
+                  title={
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>志愿者</span>
+                  }
+                  items={[
+                    { key: 'volunteer_name', label: '姓名', children: v(student?.volunteer_name) },
+                    { key: 'volunteer_user_name', label: '账号', children: v(student?.volunteer_user_name) },
+                    { key: 'volunteer_wechat_id', label: '微信', children: v(student?.volunteer_wechat_id) },
+                  ]}
+                />
+                <Descriptions
+                  size="small"
+                  column={{ xs: 1, sm: 2, md: 3 }}
+                  labelStyle={{ color: 'var(--text-sub)', width: 96 }}
+                  style={{ marginTop: 12 }}
+                  title={
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>数据官</span>
+                  }
+                  items={[
+                    { key: 'data_officer_name', label: '姓名', children: v(student?.data_officer_name) },
+                    { key: 'data_officer_user_name', label: '账号', children: v(student?.data_officer_user_name) },
+                    { key: 'data_officer_wechat_id', label: '微信', children: v(student?.data_officer_wechat_id) },
+                  ]}
+                />
+                <Descriptions
+                  size="small"
+                  column={{ xs: 1, sm: 2, md: 3 }}
+                  labelStyle={{ color: 'var(--text-sub)', width: 96 }}
+                  style={{ marginTop: 12 }}
+                  title={
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>打卡统计</span>
+                  }
+                  items={[
+                    { key: 'clock_in_count', label: '已打卡次数', children: v(student?.clock_in_count) },
+                    { key: 'camp_days', label: '行动营总天数', children: v(student?.camp_days) },
+                  ]}
+                />
+              </>
+            ),
+          },
+        ]}
+      />
+    </Card>
   );
 }
 

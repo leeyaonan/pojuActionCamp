@@ -3,10 +3,15 @@
 集中管理破局平台接口的路径、方法、读写能力与状态。破局接口定义明确后，
 仅需修改本文件即可适配，避免改动散落各处（技术方案 7.2）。
 
-⚠️ 当前 URL/字段均为占位：基于发起人上一期 Python 脚本经验确认存在
-"拉取学员打卡记录"与"给学员作业打分和评价"两个接口，但最新版志愿者看板
-接口尚未开放，开放后需据此替换真实路径与字段映射。
+MVP 现状：
+- 已验证：query_people（志愿者看板学员列表）/ fetch_checkins（学员打卡）/
+  submit_grade（评改写回）。
+- 待确认：submit_checkin（学员打卡写）/ fetch_self_progress（学员自身进度读）。
+
+⚠️ fetch_checkins 的响应字段映射为占位；query_people 的 records 字段已与
+档案字段（迁移 0004）严格对齐。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,6 +37,13 @@ class PojuEndpoint:
 
 
 ENDPOINTS: dict[str, PojuEndpoint] = {
+    "query_people": PojuEndpoint(
+        name="拉取志愿者看板学员",
+        method="POST",
+        path="/server/volunteer/query-people",
+        capability="read",
+        status="verified",
+    ),
     "fetch_checkins": PojuEndpoint(
         name="拉取学员打卡记录",
         method="GET",

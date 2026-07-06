@@ -4,6 +4,7 @@
 - POST   /api/camps        创建行动营
 - GET    /api/camps        行动营列表（含运行期状态、进度、有效打卡天数）
 - GET    /api/camps/{id}   行动营详情（含 has_manual / has_route）
+- PUT    /api/camps/{id}   部分更新（poju_action_id 等）
 - DELETE /api/camps/{id}   软删除（is_deleted=True，不级联）
 
 所有路由统一返回 ``success()`` 包裹的 dict，由 response_wrap_middleware 进一步
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.response import success
 from app.deps import get_db
-from app.schemas.camp import CampCreate, CampOut, CampSummary
+from app.schemas.camp import CampCreate, CampOut, CampSummary, CampUpdate
 from app.services.camp_service import CampService
 
 router = APIRouter()
@@ -70,6 +71,28 @@ async def get_camp(
     """获取单个行动营详情。不存在或已软删时 404。"""
     service = CampService(db)
     detail = await service.get_camp(camp_id)
+    data = detail.model_dump(mode="json")
+    return success(data)
+
+
+@router.put(
+    "/{camp_id}",
+    response_model=None,
+    summary="部分更新行动营（poju_action_id 等）",
+)
+async def update_camp(
+    camp_id: int = Path(..., gt=0, description="行动营 ID"),
+    payload: CampUpdate = ...,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """部分更新行动营字段。
+
+    - 仅更新 payload 中显式提供的字段（None=不修改，空串=清空）。
+    - 角色（role）不可更新。
+    """
+    service = CampService(db)
+    camp = await service.update_camp(camp_id, payload)
+    detail = await service.get_camp(camp.id)
     data = detail.model_dump(mode="json")
     return success(data)
 

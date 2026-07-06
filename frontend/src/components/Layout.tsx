@@ -152,6 +152,7 @@ function BreadcrumbHint({
   }
   if (pathname === '/scoring') return <>评分标准</>;
   if (pathname === '/settings') return <>接口配置</>;
+  if (pathname === '/llm-settings') return <>AI 模型配置</>;
   return null;
 }
 
@@ -270,8 +271,13 @@ function buildMenuItems(
       icon: <ApiOutlined />,
       label: <Link to="/settings">接口配置</Link>,
     },
+    {
+      key: '/llm-settings',
+      icon: <ThunderboltOutlined />,
+      label: <Link to="/llm-settings">AI 模型配置</Link>,
+    },
   ];
 }
 
 // 占位导出，避免 TypeScript noUnusedLocals 警告（保留供后续页面使用）
-export { Empty, ThunderboltOutlined, SettingOutlined };
+export { Empty, SettingOutlined };

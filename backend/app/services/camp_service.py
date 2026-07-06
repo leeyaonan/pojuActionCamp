@@ -27,7 +27,7 @@ from app.models.checkin import CheckinRecord
 from app.models.manual import Manual
 from app.models.student import Student
 from app.models.study_route import StudyRoute
-from app.schemas.camp import CampCreate, CampOut, CampSummary
+from app.schemas.camp import CampCreate, CampOut, CampSummary, CampUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,7 @@ class CampService:
             start_date=payload.start_date,
             end_date=payload.end_date,
             min_checkin_days=min_days,
+            poju_action_id=(payload.poju_action_id or None),
             is_deleted=False,
         )
         self.session.add(camp)
@@ -205,6 +206,7 @@ class CampService:
                     current_day=current_day,
                     valid_days=valid_days,
                     progress=progress,
+                    poju_action_id=camp.poju_action_id,
                     created_at=camp.created_at,
                 )
             )
@@ -249,6 +251,7 @@ class CampService:
             start_date=camp.start_date,
             end_date=camp.end_date,
             min_checkin_days=camp.min_checkin_days,
+            poju_action_id=camp.poju_action_id,
             status=status,  # type: ignore[arg-type]
             current_day=current_day,
             valid_days=valid_days,
@@ -271,6 +274,54 @@ class CampService:
         """
         camp = await self._get_active_camp(camp_id)
         camp.is_deleted = True
+        await self.session.commit()
+        await self.session.refresh(camp)
+        return camp
+
+    # ------------------------------------------------------------------
+    # 写：部分更新
+    # ------------------------------------------------------------------
+
+    async def update_camp(self, camp_id: int, payload: CampUpdate) -> Camp:
+        """部分更新行动营。
+
+        - 角色（role）不在更新范围内（创建后不可改）。
+        - 空字符串视为"清空"（如 poju_action_id 清空 actionId）；
+          字段不传（schema 中为 None）则保持原值不动。
+        - 倒序日期、起止与 total_days 不一致时仍走 warning（不阻断）。
+        - min_checkin_days > total_days 时阻断。
+        """
+        camp = await self._get_active_camp(camp_id)
+
+        # 仅更新显式传入的字段（None 视为不修改，空串视为清空）
+        if payload.name is not None:
+            camp.name = payload.name
+        if payload.description is not None:
+            camp.description = payload.description
+        if payload.total_days is not None:
+            camp.total_days = payload.total_days
+        if payload.start_date is not None:
+            camp.start_date = payload.start_date
+        if payload.end_date is not None:
+            camp.end_date = payload.end_date
+        if payload.min_checkin_days is not None:
+            camp.min_checkin_days = payload.min_checkin_days
+        # poju_action_id：None=不修改，空串=清空
+        if payload.poju_action_id is not None:
+            camp.poju_action_id = payload.poju_action_id or None
+
+        # 起止与 total_days 一致性 warning（不阻断）
+        span_days = (camp.end_date - camp.start_date).days + 1
+        if span_days != camp.total_days:
+            logger.warning(
+                "camp 起止与 total_days 不一致: total_days=%s, 实际跨 %s 天 (start=%s, end=%s)",
+                camp.total_days, span_days,
+                camp.start_date, camp.end_date,
+            )
+
+        if camp.min_checkin_days > camp.total_days:
+            raise ValidationError("min_checkin_days 不能大于 total_days")
+
         await self.session.commit()
         await self.session.refresh(camp)
         return camp
