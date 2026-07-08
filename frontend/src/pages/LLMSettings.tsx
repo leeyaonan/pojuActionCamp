@@ -254,6 +254,9 @@ export default function LLMSettings() {
     {
       title: '激活',
       key: 'is_active',
+      // 必须加 dataIndex：否则 render 第 1 参数是 record 对象（永远 truthy），
+      // 会恒走「当前」分支、激活按钮永不渲染
+      dataIndex: 'is_active',
       width: 90,
       render: (active: boolean, r: LlmProviderOut) =>
         active ? (
@@ -348,13 +351,13 @@ export default function LLMSettings() {
           <Alert
             type="warning"
             showIcon
-            message={`未激活任何厂商，当前回退 .env 配置（${active.env_provider}/${active.env_model}）`}
+            message="未激活任何大模型厂商，AI 能力不可用。请在下方配置并激活一家厂商。"
           />
         ) : (
           <Alert
             type="error"
             showIcon
-            message="未激活任何厂商，且 .env 未配置 LLM_API_KEY，AI 能力不可用。请在下方配置并激活一家厂商。"
+            message="未激活任何大模型厂商，AI 能力不可用。请在下方配置并激活一家厂商。"
           />
         )}
         <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-sub)' }}>

@@ -87,6 +87,11 @@ async def test_poju_connection(
     业务失败时（base_url/Token 缺失、Token 失效、网络错、接口 pending）
     由全局异常处理器返回 ``{code != 0, message, data: null}``，调用方
     在响应拦截器即可识别；仅在成功时返回 ``{code: 0, data: ConnectionResult}``。
+
+    ⚠️ 当前临时禁用：MVP 期间只有一个真实对接的接口（学员看板的「刷新学员档案」，
+    其路径与响应均为 mock），暂无合适的「轻量探测」接口可调，避免落回首页 HTML
+    返回导致 JSON 解析崩溃。前端已隐藏入口；待真实接口接入后再启用。
     """
-    result: ConnectionResult = await service.test_connection()
-    return success(result.model_dump(mode="json"))
+    raise NotImplementedError(
+        "测试连接功能暂未启用：暂无合适的破局接口用于探测，待真实接口接入后开放"
+    )

@@ -99,6 +99,12 @@ class LLMClient:
             kwargs: dict[str, Any] = {"api_key": api_key, "timeout": timeout}
             if base_url:
                 kwargs["base_url"] = base_url
+            # LongCat 走 Anthropic 消息格式，但鉴权要求 Authorization: Bearer 头
+            # （见 docs/api/LongCat-Anthropic消息.md）。anthropic SDK 的 api_key
+            # 参数默认发 x-api-key 头（LongCat 不认，返回 401 missing_api_key），
+            # 故通过 default_headers 显式注入 Authorization: Bearer 头。
+            # 保留 api_key 避免 SDK 报「找不到鉴权方式」；LongCat 只看 Authorization。
+            kwargs["default_headers"] = {"Authorization": f"Bearer {api_key}"}
             self._client = anthropic.Anthropic(**kwargs)
         else:  # openai / openai_compatible
             try:

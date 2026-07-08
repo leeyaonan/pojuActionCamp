@@ -4,11 +4,16 @@
  * 结构（对齐 design.md P11）：
  * - 页头：标题"接口配置"
  * - Token 配置卡：
- *   - Authorization Token Input.Password（占位"手动登录破局后，从浏览器复制 Token"）+ 提示
- *   - 接口地址 Input（预留）
+ *   - Authorization Token Input.Password（占位 "Bearer eyJhbGc..." 示例）+ 提示
+ *   - 接口地址 Input
  *   - Token 状态展示（valid/invalid/unknown badge + 上次校验时间）
- *   - "保存配置" + "测试连接"按钮
- * - 接口能力清单卡：表格（接口名/读写类型 badge/用途/状态 badge）
+ *   - "保存配置"按钮（任一字段变化即可点击）
+ * - 接口能力清单卡：表格（接口名/读写类型/接口路径/用途）+ 编辑 Modal
+ *
+ * 变更记录：
+ * - 测试连接入口已屏蔽：后端 /poju/test 已禁用，前端不展示入口；
+ *   待真实接口对接后再启用。
+ * - 接口能力清单改为可编辑：UI 层 local state 维护，编辑 Modal 改 name/type/path/purpose。
  */
 import { useEffect, useState } from 'react';
 import {
@@ -16,7 +21,11 @@ import {
   App,
   Button,
   Card,
+  Form,
   Input,
+  Modal,
+  Radio,
+  Select,
   Space,
   Table,
   Typography,
@@ -26,7 +35,6 @@ import dayjs from 'dayjs';
 import StatusTag from '@/components/Tag';
 import {
   usePojuConfig,
-  useTestConnection,
   useUpdateBaseUrl,
   useUpdateToken,
 } from '@/hooks/useSettings';
@@ -38,52 +46,9 @@ interface ApiAbility {
   key: string;
   name: string;
   type: 'read' | 'write';
+  path: string;
   purpose: string;
-  status: 'verified' | 'pending';
 }
-
-const API_ABILITIES: ApiAbility[] = [
-  {
-    key: 'fetch-checkins',
-    name: '拉取学员打卡记录',
-    type: 'read',
-    purpose: '志愿者看板同步学员打卡数据',
-    status: 'verified',
-  },
-  {
-    key: 'submit-grade',
-    name: '提交作业打分',
-    type: 'write',
-    purpose: '志愿者评改后同步星级与评语到破局',
-    status: 'verified',
-  },
-  {
-    key: 'submit-checkin',
-    name: '提交打卡内容',
-    type: 'write',
-    purpose: '学员自动提交打卡四板块（降级路径）',
-    status: 'pending',
-  },
-  {
-    key: 'fetch-progress',
-    name: '读取训练进度',
-    type: 'read',
-    purpose: '实时同步行动营进度与有效天数',
-    status: 'pending',
-  },
-];
-
-const TOKEN_STATUS_KEY: Record<TokenStatus, 'normal' | 'error' | 'unknown'> = {
-  valid: 'normal',
-  invalid: 'error',
-  unknown: 'unknown',
-};
-
-const TOKEN_STATUS_LABEL: Record<TokenStatus, string> = {
-  valid: 'Token 正常',
-  invalid: 'Token 失效',
-  unknown: 'Token 未配置',
-};
 
 const TYPE_LABEL: Record<ApiAbility['type'], string> = {
   read: '读',
@@ -95,27 +60,66 @@ const TYPE_COLOR: Record<ApiAbility['type'], string> = {
   write: 'purple',
 };
 
-const STATUS_LABEL: Record<ApiAbility['status'], string> = {
-  verified: '已验证',
-  pending: '待确认',
+const TOKEN_STATUS_KEY: Record<TokenStatus, 'normal' | 'error' | 'unknown'> = {
+  valid: 'normal',
+  invalid: 'error',
+  unknown: 'unknown',
 };
 
-const STATUS_TAG: Record<ApiAbility['status'], 'valid' | 'unknown'> = {
-  verified: 'valid',
-  pending: 'unknown',
+const TOKEN_STATUS_LABEL: Record<TokenStatus, string> = {
+  valid: 'Token 正常',
+  invalid: 'Token 失效',
+  // 修复文案误导：unknown 实为「未校验」，与「未配置」是两回事
+  unknown: 'Token 未校验',
 };
+
+// 接口能力清单（前端 local state；编辑 Modal 改这里，不持久化）
+const DEFAULT_API_ABILITIES: ApiAbility[] = [
+  {
+    key: 'fetch-checkins',
+    name: '拉取学员打卡记录',
+    type: 'read',
+    path: '/api/volunteer/checkins',
+    purpose: '志愿者看板同步学员打卡数据',
+  },
+  {
+    key: 'submit-grade',
+    name: '提交作业打分',
+    type: 'write',
+    path: '/api/volunteer/grades',
+    purpose: '志愿者评改后同步星级与评语到破局',
+  },
+  {
+    key: 'submit-checkin',
+    name: '提交打卡内容',
+    type: 'write',
+    path: '/api/student/checkin',
+    purpose: '学员自动提交打卡四板块（降级路径）',
+  },
+  {
+    key: 'fetch-progress',
+    name: '读取训练进度',
+    type: 'read',
+    path: '/api/student/progress',
+    purpose: '实时同步行动营进度与有效天数',
+  },
+];
 
 export default function Settings() {
   const { message } = App.useApp();
   const configQuery = usePojuConfig();
   const updateToken = useUpdateToken();
   const updateBaseUrl = useUpdateBaseUrl();
-  const testConnection = useTestConnection();
 
   const [token, setToken] = useState<string>('');
   const [baseUrl, setBaseUrl] = useState<string>('');
   const [tokenTouched, setTokenTouched] = useState(false);
   const [urlTouched, setUrlTouched] = useState(false);
+
+  // 接口能力清单（local state；编辑 Modal 改这里）
+  const [abilities, setAbilities] = useState<ApiAbility[]>(DEFAULT_API_ABILITIES);
+  const [editing, setEditing] = useState<ApiAbility | null>(null);
+  const [editForm] = Form.useForm<ApiAbility>();
 
   // 进入页面时，用后端返回填充表单（不覆盖用户已编辑的部分）
   useEffect(() => {
@@ -129,36 +133,46 @@ export default function Settings() {
   const lastChecked = config?.last_checked_at;
   const hasToken = !!config?.has_token;
 
+  const serverBaseUrl = config?.base_url ?? '';
+  const baseUrlChanged = baseUrl !== serverBaseUrl;
+  const tokenChanged = tokenTouched && token.length > 0;
+  // 任一字段变化即可保存（不再要求「必须有 token」）
+  const saveDisabled = !tokenChanged && !baseUrlChanged;
+
   const handleSave = async () => {
-    if (!token) {
-      message.warning('请先粘贴 Token 再保存');
-      return;
-    }
+    if (saveDisabled) return;
     try {
       // 顺序：先 base_url，再 token（base_url 失败时不应继续）
-      const serverBaseUrl = config?.base_url ?? '';
-      if (baseUrl !== serverBaseUrl) {
+      if (baseUrlChanged) {
         await updateBaseUrl.mutateAsync(baseUrl.trim() || null);
+        setUrlTouched(false);
       }
-      await updateToken.mutateAsync(token);
+      if (tokenChanged) {
+        await updateToken.mutateAsync(token);
+        setToken('');
+        setTokenTouched(false);
+      }
       message.success('配置已保存');
-      setToken('');
-      setTokenTouched(false);
     } catch {
       // 全局 toast 已处理
     }
   };
 
-  const handleTest = async () => {
+  const openEdit = (a: ApiAbility) => {
+    setEditing(a);
+    editForm.setFieldsValue(a);
+  };
+  const saveEdit = async () => {
+    if (!editing) return;
     try {
-      const result = await testConnection.mutateAsync();
-      if (result.valid) {
-        message.success(result.message || '连接成功');
-      } else {
-        message.error(result.message || '连接失败');
-      }
+      const values = await editForm.validateFields();
+      setAbilities((prev) =>
+        prev.map((it) => (it.key === editing.key ? { ...it, ...values } : it))
+      );
+      setEditing(null);
+      message.success('已保存（仅本地，未持久化到后端）');
     } catch {
-      // 全局 toast 已处理
+      // 表单校验失败由 Modal 内部展示
     }
   };
 
@@ -193,17 +207,27 @@ export default function Settings() {
       ),
     },
     {
+      title: '接口路径',
+      dataIndex: 'path',
+      key: 'path',
+      width: 240,
+      render: (p: string) => (
+        <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{p}</Text>
+      ),
+    },
+    {
       title: '用途',
       dataIndex: 'purpose',
       key: 'purpose',
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 110,
-      render: (status: ApiAbility['status']) => (
-        <StatusTag status={STATUS_TAG[status]} text={STATUS_LABEL[status]} />
+      title: '操作',
+      key: 'actions',
+      width: 100,
+      render: (_, r: ApiAbility) => (
+        <Button size="small" type="link" style={{ padding: 0 }} onClick={() => openEdit(r)}>
+          编辑
+        </Button>
       ),
     },
   ];
@@ -240,7 +264,7 @@ export default function Settings() {
                 setToken(e.target.value);
                 setTokenTouched(true);
               }}
-              placeholder="手动登录破局后，从浏览器复制 Token"
+              placeholder="Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOi...（完整 Token）"
               style={{ width: 480 }}
               autoComplete="off"
             />
@@ -297,24 +321,18 @@ export default function Settings() {
               type="primary"
               onClick={handleSave}
               loading={updateToken.isPending || updateBaseUrl.isPending}
-              disabled={!token}
+              disabled={saveDisabled}
             >
               保存配置
             </Button>
-            <Button
-              onClick={handleTest}
-              loading={testConnection.isPending}
-              disabled={!hasToken}
-            >
-              测试连接
-            </Button>
+            {/* 测试连接按钮已屏蔽：后端 /poju/test 暂时禁用，未找到合适的探测接口 */}
           </Space>
 
           <Alert
             type="info"
             showIcon
             message="Token 过期处理"
-            description="若接口返回 401，请重新登录破局获取 Token 后粘贴保存；测试连接会立即校验当前 Token 有效性。"
+            description="若接口调用返回 401，请重新登录破局获取新 Token 后粘贴保存。"
             style={{ borderRadius: 6 }}
           />
         </Space>
@@ -329,12 +347,60 @@ export default function Settings() {
         <Table<ApiAbility>
           rowKey="key"
           columns={columns}
-          dataSource={API_ABILITIES}
+          dataSource={abilities}
           pagination={false}
           size="middle"
-          loading={configQuery.isLoading}
         />
       </Card>
+
+      {/* 接口能力清单编辑 Modal（local state；改后仅本页生效） */}
+      <Modal
+        title={`编辑接口：${editing?.name ?? ''}`}
+        open={!!editing}
+        onCancel={() => setEditing(null)}
+        onOk={saveEdit}
+        okText="保存"
+        cancelText="取消"
+        destroyOnClose
+        maskClosable={false}
+      >
+        <Form form={editForm} layout="vertical" preserve={false}>
+          <Form.Item
+            label="接口名"
+            name="name"
+            rules={[{ required: true, message: '请输入接口名' }]}
+          >
+            <Input placeholder="如：拉取学员打卡记录" />
+          </Form.Item>
+          <Form.Item
+            label="读写类型"
+            name="type"
+            rules={[{ required: true, message: '请选择读写类型' }]}
+          >
+            <Radio.Group>
+              <Radio value="read">读</Radio>
+              <Radio value="write">写</Radio>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item
+            label="接口路径"
+            name="path"
+            rules={[
+              { required: true, message: '请输入接口路径' },
+              { pattern: /^\//, message: '路径必须以 / 开头' },
+            ]}
+          >
+            <Input placeholder="/api/volunteer/checkins" />
+          </Form.Item>
+          <Form.Item
+            label="用途"
+            name="purpose"
+            rules={[{ required: true, message: '请输入用途说明' }]}
+          >
+            <Input placeholder="如：志愿者看板同步学员打卡数据" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
