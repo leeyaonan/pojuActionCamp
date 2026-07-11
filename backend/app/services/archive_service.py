@@ -31,7 +31,12 @@ from app.models.checkin import CheckinRecord
 from app.models.settings import PojuConfig
 from app.models.student import Student
 from app.poju.client import PojuClient
-from app.poju.exceptions import PojuAuthError
+from app.poju.exceptions import (
+    PojuApiError,
+    PojuAuthError,
+    PojuNetworkError,
+    PojuNotAvailable,
+)
 from cryptography.fernet import Fernet, InvalidToken
 from app.schemas.volunteer import (
     ArchiveStats,
@@ -127,6 +132,21 @@ def _decrypt_poju_token(fernet: Fernet, ciphertext: Optional[str]) -> Optional[s
     except (InvalidToken, ValueError) as exc:
         logger.error("PojuConfig.token 解密失败，secret_key 可能已变更: %s", exc)
         raise ValidationError("破局 Token 解密失败，请到接口配置重新填写") from exc
+
+
+def _student_field_for_clockin_key(item_key: str) -> str:
+    """把 clock-in _apply 用的 item key 映射到 Student ORM 列名（保持一致）。"""
+    mapping: dict[str, str] = {
+        "user_name": "user_name",
+        "user_number": "user_number",
+        "wechat_id": "wechat_id",
+        "full_name": "full_name",
+        "wechat_name": "wechat_name",
+        "phone": "phone",
+        "volunteer_name": "volunteer_name",
+        "avatar": "avatar",
+    }
+    return mapping.get(item_key, item_key)
 
 
 # ---------------------------------------------------------------------------
@@ -282,24 +302,38 @@ class ArchiveService:
     # 写：同步志愿者看板
     # ------------------------------------------------------------------
 
-    async def sync_volunteer_board(self, camp_id: int) -> SyncResult:
-        """从破局拉取打卡记录并 upsert 到本地。
+    async def sync_volunteer_board(
+        self,
+        camp_id: int,
+        score: Optional[str] = "0",
+    ) -> SyncResult:
+        """从破局 clock-in 接口拉取打卡记录并 upsert 到本地。
 
-        流程：
-        1. 校验 camp 存在且 role='volunteer'。
+        流程（2026-07-11 修订，对齐真实 clock-in 接口）：
+        1. 校验 camp 存在且 role='volunteer'，且 camp.poju_action_id 已填写。
         2. 取 PojuConfig（token+base_url）；未配置 → ValidationError。
-        3. 构建 PojuClient，调用 fetch_checkin_records(camp_id)。
+        3. 构建 PojuClient，调用 fetch_clockin_records(action_id, score)：
+           - score="0"（默认）→ 仅未评改；score="" → 全部
            - PojuAuthError 上抛由统一异常处理器接管。
-        4. 按 poju_student_id upsert Student（创建或更新昵称/wechat/last_synced_at）。
-        5. 按 poju_checkin_id upsert CheckinRecord：
-           - 新增：grade_status='pending'，stars 取接口返回值（若有）。
-           - 已存在：保留原 grade_status/stars（避免覆盖人工评改）。
-        6. 返回 SyncResult(success=True, synced_count, message)。
+        4. 对每条记录联级拉附件（list_attachments），拼装 images_json。
+           - 单条附件失败 → 写 errors，整体流程不中断。
+        5. upsert Student：clock-in 接口 records[].id 是打卡 UUID；学员 UUID
+           在 createdBy。优先 (camp_id, createdBy) 精确命中，否则按 userName/
+           userNumber/wechatId 模糊匹配，都没有则新建占位。
+        6. upsert CheckinRecord：始终以破局为准（用户决策 Q1）。
+           - poju_score=0/None → stars=null + grade_status='pending'
+           - poju_score=1/2/3 → stars=score + grade_status='graded' + 写 comment
+           - 全字段覆盖（today_action/today_achievement/.../images_json 等）
+        7. 返回 SyncResult(total_from_poju, synced_count, errors, ...)。
         """
         camp = await self._get_active_camp(camp_id)
         if camp.role != "volunteer":
             raise ValidationError(
                 f"camp {camp_id} 不是志愿者行动营（role={camp.role}），无法同步"
+            )
+        if not camp.poju_action_id or not camp.poju_action_id.strip():
+            raise ValidationError(
+                "尚未填写破局行动营 ID (actionId)，请到「行动营设置」补填后再同步"
             )
 
         config = await self._get_poju_config()
@@ -312,54 +346,166 @@ class ArchiveService:
         client = PojuClient(base_url=config.base_url, token=plaintext_token)
         try:
             try:
-                records = await client.fetch_checkin_records(camp_id=camp_id)
+                (
+                    records,
+                    page_errors,
+                    pages_fetched,
+                    total_from_poju,
+                ) = await client.fetch_clockin_records(
+                    action_id=camp.poju_action_id,
+                    score=score,
+                )
             except PojuAuthError:
-                # 直接上抛，由统一异常处理器映射为 401
                 raise
         finally:
             await client.close()
 
+        all_errors: list[str] = list(page_errors)
         synced_count = 0
         now = datetime.now(timezone.utc)
+
         for item in records or []:
-            poju_student_id = (item.get("poju_student_id") or "").strip()
             poju_checkin_id = (item.get("poju_checkin_id") or "").strip()
-            if not poju_student_id or not poju_checkin_id:
-                # 关键字段缺失跳过（避免脏数据）
-                logger.warning(
-                    "跳过缺失关键字段的打卡记录: student=%r checkin=%r",
-                    poju_student_id,
-                    poju_checkin_id,
-                )
+            if not poju_checkin_id:
+                logger.warning("跳过缺失 poju_checkin_id 的打卡记录: %r", item.get("id"))
                 continue
 
-            # upsert Student（按 camp_id + poju_student_id）
-            student = await self._upsert_student(
+            # 联级拉附件（如有 groupCode）
+            images_ref = (item.get("images_ref") or "").strip()
+            if images_ref:
+                try:
+                    attachments = await client.list_attachments(images_ref)
+                    item["images_json"] = attachments
+                except PojuAuthError:
+                    raise
+                except (PojuApiError, PojuNetworkError, PojuNotAvailable) as exc:
+                    logger.warning(
+                        "拉取附件失败（groupCode=%s）: %s", images_ref, exc
+                    )
+                    all_errors.append(f"附件 {images_ref} 拉取失败：{exc}")
+                    item["images_json"] = None
+
+            # 解析本地 Student（clock-in 的 poju_student_id 实为 createdBy）
+            poju_student_id = (item.get("poju_student_id") or "").strip()
+            student = await self._resolve_student_for_clockin(
                 camp_id=camp_id,
+                item=item,
                 poju_student_id=poju_student_id,
-                nickname=(item.get("nickname") or "").strip() or poju_student_id,
                 last_synced_at=now,
             )
 
-            # upsert CheckinRecord（按 poju_checkin_id）
-            created = await self._upsert_checkin(
+            # upsert CheckinRecord：以破局为准
+            await self._upsert_checkin(
                 student_id=student.id,
                 camp_id=camp_id,
                 item=item,
             )
-            if created:
-                synced_count += 1
+            synced_count += 1
 
-        # 统一 commit：避免 async session 默认 autobegin 不自动 commit
-        # 导致 yield 结束后被回滚；与 camp_service / manual_service 约定一致。
         await self.session.commit()
 
+        message = (
+            f"同步完成：破局共 {total_from_poju} 条，本地新增/更新 {synced_count} 条"
+            + (f"，{len(all_errors)} 个失败" if all_errors else "")
+        )
         return SyncResult(
             success=True,
             synced_count=synced_count,
             synced_at=now,
-            message=f"同步成功，新增 {synced_count} 条打卡记录（共处理 {len(records or [])} 条）",
+            total_from_poju=total_from_poju,
+            errors=all_errors,
+            message=message,
         )
+
+    async def _resolve_student_for_clockin(
+        self,
+        *,
+        camp_id: int,
+        item: dict[str, Any],
+        poju_student_id: str,
+        last_synced_at: datetime,
+    ) -> Student:
+        """把 clock-in 单条记录解析成本地 Student 行。
+
+        解析优先级（用户决策 Q1：始终以破局为准）：
+        1. (camp_id, poju_student_id) 命中 → 直接复用，覆盖式更新档案字段。
+        2. 用 userName/userNumber/wechatId 模糊匹配已有 Student。
+        3. 都没有 → 新建占位 Student。
+        """
+        # 优先级 1：(camp_id, poju_student_id) 精确命中
+        if poju_student_id:
+            stmt = select(Student).where(
+                and_(Student.camp_id == camp_id, Student.poju_student_id == poju_student_id)
+            )
+            hit = (await self.session.execute(stmt)).scalar_one_or_none()
+            if hit is not None:
+                self._apply_clockin_to_student(hit, item, last_synced_at)
+                return hit
+
+        # 优先级 2：userName / userNumber / wechatId 模糊匹配
+        for key in ("user_name", "user_number", "wechat_id"):
+            val = (item.get(key) or "").strip() if item.get(key) else ""
+            if not val:
+                continue
+            stmt = select(Student).where(
+                and_(
+                    Student.camp_id == camp_id,
+                    getattr(Student, _student_field_for_clockin_key(key)) == val,
+                )
+            )
+            hit = (await self.session.execute(stmt)).scalar_one_or_none()
+            if hit is not None:
+                if poju_student_id and hit.poju_student_id != poju_student_id:
+                    hit.poju_student_id = poju_student_id
+                self._apply_clockin_to_student(hit, item, last_synced_at)
+                return hit
+
+        # 优先级 3：新建占位 Student
+        nickname = (
+            (item.get("nickname") or "").strip()
+            or (item.get("user_name") or "").strip()
+            or poju_student_id
+            or "unknown"
+        )
+        student = Student(
+            camp_id=camp_id,
+            poju_student_id=poju_student_id
+            or (item.get("user_name") or "").strip()
+            or f"clockin-{item.get('poju_checkin_id','')}",
+            nickname=nickname,
+            wechat=(item.get("wechat_id") or "").strip() or None,
+            last_synced_at=last_synced_at,
+        )
+        self._apply_clockin_to_student(student, item, last_synced_at)
+        self.session.add(student)
+        await self.session.flush()
+        return student
+
+    def _apply_clockin_to_student(
+        self,
+        student: Student,
+        item: dict[str, Any],
+        last_synced_at: datetime,
+    ) -> None:
+        """把 clock-in 单条记录里的学员身份字段覆盖式写入 Student。"""
+        new_nick = (item.get("nickname") or "").strip()
+        if new_nick:
+            student.nickname = new_nick
+        new_wechat = (item.get("wechat_id") or "").strip()
+        if new_wechat:
+            student.wechat = new_wechat
+
+        for key in (
+            "full_name", "wechat_id", "phone", "wechat_name",
+            "user_name", "user_number",
+            "volunteer_name",
+            "avatar",
+        ):
+            v = item.get(key)
+            if v is not None and str(v).strip():
+                setattr(student, key, str(v).strip())
+
+        student.last_synced_at = last_synced_at
 
     # ------------------------------------------------------------------
     # 写：学员档案初始化/刷新（W4 query-people）
@@ -709,39 +855,78 @@ class ArchiveService:
         camp_id: int,
         item: dict[str, Any],
     ) -> bool:
-        """按 poju_checkin_id upsert CheckinRecord。
+        """按 poju_checkin_id upsert CheckinRecord（始终以破局为准）。
+
+        业务约定（用户决策 Q1，2026-07-11 锁定）：
+        - 始终以破局数据为准：本地人工评改也会被破局值覆盖。
+        - poju_score=0/None → stars=null + grade_status='pending'
+        - poju_score=1/2/3 → stars=score + grade_status='graded' + 写 comment
+        - 全字段覆盖：today_action/today_achievement/good_things_share/
+          next_action/images_json/.../submitted_at_ms/sign_up_id/user_name/...
+        - 旧字段 day_number/checkin_date 保留（沿用原有 _parse_date / 缺省 0 逻辑）。
+        - synced_to_poju / synced_at 不动（由 submit_grade 路径管理）。
 
         Returns:
-            True 表示新增；False 表示已存在（不覆盖 stars）。
+            True 表示新增或更新（始终返回 True，调用方可据此计 synced_count）。
         """
         poju_checkin_id = (item.get("poju_checkin_id") or "").strip()
+        poju_score = item.get("poju_score")  # 0/1/2/3/None
+        stars = poju_score if poju_score in (1, 2, 3) else None
+        grade_status = "graded" if stars is not None else "pending"
+
         stmt = select(CheckinRecord).where(
             CheckinRecord.poju_checkin_id == poju_checkin_id
         )
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
-        if existing is not None:
-            # 已存在：不覆盖 grade_status / stars（保留人工评改）
-            # 但可以更新 last_synced 标志：沿用原值，避免接口写回干扰
-            return False
 
-        # 新增
-        record = CheckinRecord(
-            student_id=student_id,
-            camp_id=camp_id,
-            day_number=int(item.get("day_number") or 0)
+        # 待写入字段全集（不动 synced_to_poju / synced_at）
+        new_fields: dict[str, Any] = {
+            # 旧字段（保留）
+            "student_id": student_id,
+            "camp_id": camp_id,
+            "day_number": int(item.get("day_number") or 0)
             if item.get("day_number") is not None
             else 0,
-            checkin_date=self._parse_date(item.get("checkin_date")),
-            content=item.get("content") or None,
-            images=item.get("images") or None,
-            submitted_at=self._parse_datetime(item.get("submitted_at")),
-            poju_checkin_id=poju_checkin_id,
-            grade_status="pending",
-            stars=item.get("stars"),
-            synced_to_poju=False,
-            synced_at=None,
-        )
-        self.session.add(record)
+            "checkin_date": self._parse_date(item.get("checkin_date")),
+            "content": item.get("content") or None,
+            "images": item.get("images") or None,
+            "submitted_at": self._parse_datetime(item.get("submitted_at")),
+            "poju_checkin_id": poju_checkin_id,
+            "grade_status": grade_status,
+            "stars": stars,
+            # 迁移 0007 新字段
+            "sign_up_id": item.get("sign_up_id"),
+            "user_name": item.get("user_name"),
+            "user_number": item.get("user_number"),
+            "wechat_id": item.get("wechat_id"),
+            "wechat_name": item.get("wechat_name"),
+            "avatar": item.get("avatar"),
+            "today_action": item.get("today_action"),
+            "today_achievement": item.get("today_achievement"),
+            "good_things_share": item.get("good_things_share"),
+            "next_action": item.get("next_action"),
+            "poju_score": poju_score,
+            "volunteer_name": item.get("volunteer_name"),
+            "images_ref": item.get("images_ref"),
+            "images_json": item.get("images_json"),
+            "submitted_at_ms": item.get("submitted_at_ms"),
+        }
+
+        if existing is None:
+            record = CheckinRecord(
+                **new_fields,
+                synced_to_poju=False,
+                synced_at=None,
+            )
+            self.session.add(record)
+            await self.session.flush()
+            return True
+
+        # 已存在：全字段覆盖（始终以破局为准），主键/归属字段不重写
+        for k, v in new_fields.items():
+            if k in ("student_id", "camp_id", "poju_checkin_id"):
+                continue
+            setattr(existing, k, v)
         await self.session.flush()
         return True
 

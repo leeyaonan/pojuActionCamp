@@ -64,19 +64,36 @@ def _archive_service(
 @router.post(
     "/camps/{camp_id}/sync",
     response_model=None,
-    summary="手动触发同步：拉取破局学员与打卡记录",
+    summary="手动触发同步：拉取破局学员打卡记录（clock-in）",
 )
 async def sync_board(
     camp_id: int = Path(..., gt=0, description="行动营 ID（志愿者营）"),
+    score: Optional[str] = Query(
+        "0",
+        description=(
+            "破局 score 过滤：'0'=仅未评改（默认），"
+            "'1'/'2'/'3'=特定星级，''（空串）/ 不传=全部"
+        ),
+        pattern="^(0|1|2|3)?$",
+    ),
     service: ArchiveService = Depends(_archive_service),
 ) -> dict:
-    """从破局拉取学员与打卡记录并 upsert。
+    """从破局 clock-in 接口拉取打卡记录并 upsert。
 
     - camp 必须为志愿者身份（role='volunteer'）。
+    - camp.poju_action_id 必须已填写（否则抛 1001）。
+    - score 默认 '0'：仅拉未评改打卡；前端按需可传空串拉全部。
     - PojuAuthError 由统一异常处理器映射为 401。
     - 其它破局异常（网络/业务）由统一异常处理器映射为 502。
+
+    Returns:
+        SyncResult：success / synced_count / total_from_poju / errors / synced_at。
     """
-    result: SyncResult = await service.sync_volunteer_board(camp_id)
+    # 空串 / 不传 → 全部（不传 score 时给 None 让 service 走全部）
+    score_arg: Optional[str] = score if score else None
+    result: SyncResult = await service.sync_volunteer_board(
+        camp_id=camp_id, score=score_arg
+    )
     return success(result.model_dump(mode="json"))
 
 

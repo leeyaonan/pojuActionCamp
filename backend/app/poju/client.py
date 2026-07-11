@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -183,14 +183,18 @@ class PojuClient:
                 )
                 body = response.json()
                 # 业务码识别：部分破局端点 HTTP 200 但用 body.code 表达鉴权/业务错误。
-                # 已识别到的 code：401（请登录）/ 403 / 500（业务异常）。
+                # 已识别到的 code：401（请登录）/ 403 / 10401（请登录系统后再访问）/
+                # 5xx 业务异常。
                 # 注意：query-people 的真实响应 code=200，但 PagesTool 调用其它端点
                 # 可能仍按 HTTP 状态码表达错误；两者各自识别一次。
                 if isinstance(body, dict):
                     biz_code = body.get("code")
                     biz_msg = body.get("msg") or body.get("message")
-                    # 业务码若是 401/403 等鉴权失败 → 转抛 PojuAuthError
-                    if biz_code in (401, 403):
+                    # 业务码若是鉴权失败 → 转抛 PojuAuthError
+                    # 10401 是破局返回的"请登录"业务码（HTTP 200 + code=10401）
+                    if biz_code in (401, 403, 10401) or (
+                        isinstance(biz_msg, str) and "请登录" in biz_msg
+                    ):
                         logger.warning(
                             "破局业务鉴权失败（code=%s）: %s %s msg=%s",
                             biz_code,
@@ -247,53 +251,195 @@ class PojuClient:
     # 读接口
     # ------------------------------------------------------------------
 
-    async def fetch_checkin_records(self, camp_id: int | None = None) -> list[dict[str, Any]]:
-        """拉取学员打卡记录（读接口，志愿者看板数据来源）。
+    async def fetch_clockin_records(
+        self,
+        action_id: str,
+        *,
+        score: Optional[str] = "0",
+        page_size: int = 50,
+        max_pages: int = 20,
+    ) -> tuple[list[dict[str, Any]], list[str], int, int]:
+        """拉取某 actionId 下学员打卡记录（clock-in 接口）。
 
-        ⚠️ 响应字段映射为占位：返回标准化字典列表，字段含义待真实接口定义明确后调整。
-        当前预期字段：poju_student_id, poju_checkin_id, nickname, content,
-        images, submitted_at, stars, day_number, checkin_date。
+        POST /server/clock-in/volunteer-query，body:
+            {pageNum, pageSize, filters:{actionId, score:"0"|"1"|"2"|"3"|""}, orders:[]}
+        - score="0" → 仅未评改（默认）
+        - score="" / None → 全部
+        - score="1"/"2"/"3" → 特定星级
 
-        Args:
-            camp_id: 行动营本地 ID（用于过滤，若接口支持）。
+        响应嵌套结构：``{"code":200,"msg":"success","data":{pageSize,pageNum,total,records:[...]}}``
+        与 query-people 同款（沿用 _extract_payload_like_people 兼容同义词）。
+
+        错误处理：
+        - PojuAuthError → 立刻上抛（统一异常处理器映射为 401）。
+        - 单页网络/业务错 → 跳过该页，errors 追加一条，继续翻页。
+        - total <= 0 或 records 为空 → 立刻结束。
 
         Returns:
-            标准化打卡记录字典列表；接口返回空或异常时返回空列表。
+            (records_normalized, errors, pages_fetched, total_from_poju)。
 
         Raises:
-            PojuAuthError: Token 失效（401/403），上抛。
-            PojuApiError: 业务错误（4xx/5xx），上抛（修复 BUG-PJU-001：不再静默吞）。
-            PojuNetworkError: 网络错误，上抛。
-            PojuNotAvailable: 接口 pending/未开放，上抛。
+            PojuAuthError: Token 失效，上抛。
+            PojuNotAvailable: 接口 pending，上抛。
+            ValueError: action_id 为空。
         """
-        endpoint = ENDPOINTS["fetch_checkins"]
-        params = {"camp_id": camp_id} if camp_id is not None else None
-        # 注意：不再静默吞 PojuNetworkError/PojuApiError，
-        # 否则 verify_token 在网络错时永远返回 True（假阳性）。
-        data = await self._request(endpoint, params=params)
-        if not data:
-            return []
-        if isinstance(data, dict) and "list" in data:
-            data = data["list"]
-        if not isinstance(data, list):
-            return []
-        return [self._normalize_checkin(item) for item in data]
+        if not action_id or not action_id.strip():
+            raise ValueError("action_id 不能为空")
 
-    def _normalize_checkin(self, item: dict[str, Any]) -> dict[str, Any]:
-        """将接口返回的原始打卡记录标准化。
+        endpoint = ENDPOINTS["fetch_clockin_records"]
+        all_records: list[dict[str, Any]] = []
+        errors: list[str] = []
+        pages_fetched = 0
+        total: Optional[int] = None
 
-        字段映射为占位，真实接口字段名明确后在此统一适配。
+        page = 1
+        while True:
+            if page > max_pages:
+                logger.warning(
+                    "fetch_clockin_records 翻页超上限 %d (action_id=%s)，停止",
+                    max_pages,
+                    action_id,
+                )
+                errors.append(f"翻页超过最大页数 {max_pages}，请检查 pageSize 配置")
+                break
+
+            payload = {
+                "pageNum": page,
+                "pageSize": page_size,
+                "filters": {
+                    "actionId": action_id,
+                    "score": score if score else "",
+                },
+                "orders": [],
+            }
+            try:
+                resp = await self._request(endpoint, json=payload)
+                pages_fetched += 1
+            except PojuAuthError:
+                raise
+            except (PojuApiError, PojuNetworkError, PojuNotAvailable) as exc:
+                logger.warning(
+                    "fetch_clockin_records 第 %d 页失败(action_id=%s): %s",
+                    page,
+                    action_id,
+                    exc,
+                )
+                errors.append(f"第 {page} 页失败：{exc}")
+                page += 1
+                continue
+
+            data = self._extract_payload_like_people(resp)
+            if total is None:
+                total = data["total"]
+            records = data["records"]
+            if not records:
+                break
+            all_records.extend(self._normalize_clockin(r) for r in records)
+            page += 1
+            if total is not None and total <= page_size * (page - 1):
+                break
+
+        return all_records, errors, pages_fetched, total or 0
+
+    async def list_attachments(
+        self, group_code: str
+    ) -> list[dict[str, Any]]:
+        """拉取学员打卡附件（GET /server/attachment/list?groupCode=...）。
+
+        响应：``{"code":200,"msg":"success","data":[{fileName,fileUrl,...}]}``
+        - 失败上抛 PojuAuthError / PojuApiError / PojuNetworkError / PojuNotAvailable
+        - groupCode 为空或无附件 → 返回 []
+
+        Raises:
+            ValueError: group_code 为空。
         """
+        if not group_code or not group_code.strip():
+            raise ValueError("group_code 不能为空")
+
+        endpoint = ENDPOINTS["list_attachments"]
+        resp = await self._request(endpoint, params={"groupCode": group_code.strip()})
+
+        if resp is None:
+            return []
+        if isinstance(resp, dict):
+            payload = resp.get("data")
+            if isinstance(payload, list):
+                return payload
+            if isinstance(payload, dict):
+                # 兜底：data 内嵌 records/list
+                for key in ("records", "list", "items"):
+                    if key in payload and isinstance(payload[key], list):
+                        return payload[key]
+                return []
+        if isinstance(resp, list):
+            return resp
+        return []
+
+    def _normalize_clockin(self, item: dict[str, Any]) -> dict[str, Any]:
+        """把 clock-in 单条记录标准化为 CheckinRecord ORM 同名字段。
+
+        字段映射（与 app/models/checkin.py 迁移 0007 新增列严格对齐）：
+        - 唯一键：poju_student_id（破局 user UUID，对应 records[].id 的同 actionId
+          下不可识别，本接口用 createdBy 作为 user UUID；详细映射见下）
+        - 打卡四板块：today_action / today_achievement / good_things_share / next_action
+        - 评改：poju_score（0/1/2/3）+ comment
+        - 附件：images_ref（破局原 groupCode UUID 字符串）+ images_json（懒加载占位）
+        - 学员身份：user_name / user_number / wechat_id / wechat_name / avatar / volunteer_name
+        - 时间：submitted_at_ms（破局原始毫秒时间戳）
+
+        注：clock-in records[].id 是打卡记录 UUID（→ poju_checkin_id），
+        createdBy 是 user UUID（→ poju_student_id）；不要混淆。
+        """
+        def _s(v: Any) -> Optional[str]:
+            if v is None:
+                return None
+            s = str(v).strip()
+            return s or None
+
+        def _i(v: Any) -> Optional[int]:
+            if v is None or v == "":
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
+        # poju_score：破局 0/1/2/3 → 始终保留原值（0 是关键状态：未评改）
+        poju_score_raw = _i(item.get("score"))
+        # poju_student_id：clock-in 接口没有学员 ID 字段；用 createdBy 作占位（UUID 形式）。
+        # 真实学员 ID 需要 join 学员档案（query-people 已落库），service 层再做 join。
+        poju_student_id = _s(item.get("createdBy")) or _s(item.get("userName"))
+
         return {
-            "poju_student_id": str(item.get("student_id") or item.get("poju_student_id") or ""),
-            "poju_checkin_id": str(item.get("checkin_id") or item.get("id") or ""),
-            "nickname": item.get("nickname") or item.get("name") or "",
-            "content": item.get("content") or item.get("text") or "",
-            "images": item.get("images") or [],
-            "submitted_at": item.get("submitted_at") or item.get("created_at"),
-            "stars": item.get("stars"),
-            "day_number": item.get("day_number"),
-            "checkin_date": item.get("checkin_date") or item.get("date"),
+            # 唯一键
+            "poju_checkin_id": _s(item.get("id")),
+            "poju_student_id": poju_student_id,
+            # 报名记录
+            "sign_up_id": _s(item.get("signUpId")),
+            # 学员身份
+            "user_name": _s(item.get("userName")),
+            "user_number": _s(item.get("userNumber")),
+            "wechat_id": _s(item.get("wechatId")),
+            "wechat_name": _s(item.get("wechatName")),
+            "avatar": _s(item.get("avatar")),
+            "volunteer_name": _s(item.get("volunteerName")),
+            # 打卡四板块
+            "today_action": item.get("todayAction") or None,
+            "today_achievement": item.get("todayAchievement") or None,
+            "good_things_share": item.get("goodThingsShare") or None,
+            "next_action": item.get("nextAction") or None,
+            # 兼容旧字段：content 是「今日实操」一段（与 today_action 同义）
+            "content": item.get("todayAction") or item.get("content") or None,
+            # 评改
+            "poju_score": poju_score_raw,
+            "comment": item.get("comment") or None,
+            # 附件：ref 是 groupCode，json 留 None 由 service 联级拉
+            "images_ref": _s(item.get("images")),
+            "images_json": None,
+            # 时间
+            "submitted_at_ms": _i(item.get("createdAt")),
+            # 旧字段保留（content 是 todayAction 的同义旧字段，CheckinRecord.content 仍落库）
+            "nickname": _s(item.get("fullName")) or _s(item.get("wechatName")),
         }
 
     async def fetch_volunteer_people(
@@ -382,7 +528,7 @@ class PojuClient:
                 page += 1
                 continue
 
-            data = self._extract_people_payload(resp)
+            data = self._extract_payload_like_people(resp)
             if total is None:
                 total = data["total"]
             records = data["records"]
@@ -398,8 +544,8 @@ class PojuClient:
         return all_records, errors, pages_fetched
 
     @staticmethod
-    def _extract_people_payload(resp: Any) -> dict[str, Any]:
-        """从 query-people 响应中剥出 {total, records}。
+    def _extract_payload_like_people(resp: Any) -> dict[str, Any]:
+        """从分页接口响应中剥出 {total, records}。
 
         兼容以下响应形态（按顺序探测，第一个命中即返回）：
         1. ``{"code":200,"data":{"total":N,"records":[...]}}``  ← 当前已知
@@ -413,6 +559,8 @@ class PojuClient:
 
         探测结果每次都打到 INFO 日志（透出字段名），便于排查
         "接口通了但 0 条" 类 bug。
+
+        共用于 query-people 与 fetch_clockin_records 两个 POST 分页接口。
         """
         def _to_int(v: Any) -> int:
             if v is None or v == "":
@@ -552,7 +700,9 @@ class PojuClient:
             不抛任何 Poju 异常；调用方只看 True/False。
         """
         try:
-            await self.fetch_checkin_records()
+            # 调用 clock-in 接口（带 actionId 占位，仅探测鉴权）；参数空也无害，
+            # 因为 PojuClient 鉴权失败会在 _request 阶段抛出，不依赖服务端响应。
+            await self.fetch_clockin_records(action_id="verify-token-probe")
             return True
         except (
             PojuAuthError,

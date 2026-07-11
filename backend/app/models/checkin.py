@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -58,6 +58,53 @@ class CheckinRecord(Base):
     )
     synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True, comment="同步时间"
+    )
+
+    # ====== 迁移 0007：破局 clock-in 接口扩展字段 ======
+    sign_up_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, comment="报名记录 ID（破局 signUpId）"
+    )
+    user_name: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, comment="破局登录账号（userName）"
+    )
+    user_number: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, comment="破局编号（userNumber）"
+    )
+    wechat_id: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, comment="微信号（wechatId）"
+    )
+    wechat_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, comment="微信昵称（wechatName）"
+    )
+    avatar: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True, comment="学员头像 URL"
+    )
+    today_action: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="今日实操（todayAction）"
+    )
+    today_achievement: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="今日成果（todayAchievement）"
+    )
+    good_things_share: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="好事分享（goodThingsShare）"
+    )
+    next_action: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="下一步行动（nextAction）"
+    )
+    poju_score: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="破局原始 score：0=未评改/1-3=星级"
+    )
+    volunteer_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, comment="志愿者姓名（volunteerName）"
+    )
+    images_ref: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, comment="附件 groupCode（破局原值，单 UUID）"
+    )
+    images_json: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
+        JSON, nullable=True, comment="附件列表 [{fileName,fileUrl,fileSize,fileMd5,suffix}]"
+    )
+    submitted_at_ms: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True, comment="提交时间原始毫秒时间戳（排错用）"
     )
 
     created_at: Mapped[datetime] = mapped_column(

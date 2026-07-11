@@ -152,11 +152,33 @@ class GradeDraftOut(BaseModel):
 
 
 class SyncResult(BaseModel):
-    """同步破局结果。"""
+    """同步破局结果。
+
+    - success: 是否成功（业务异常时为 False，由 service 内部处理后返回）
+    - message: 给前端展示的摘要文本
+    - synced_at: 同步时间（成功时）
+    - total_from_poju: 破局 total（本次同步从破局读到的总数）
+    - synced_count: 本次处理/新增/覆盖的打卡记录条数
+    - errors: 分页/附件失败明细（UI 可直接展示）
+    """
 
     success: bool
     message: str
     synced_at: Optional[datetime] = Field(default=None, description="同步时间(成功时)")
+    total_from_poju: int = Field(
+        default=0,
+        ge=0,
+        description="破局 total（本次同步从破局读到的总记录数）",
+    )
+    synced_count: int = Field(
+        default=0,
+        ge=0,
+        description="本次新增/更新的打卡记录条数",
+    )
+    errors: list[str] = Field(
+        default_factory=list,
+        description="分页/附件失败明细（单页失败不阻断整体流程）",
+    )
 
 
 class InitResult(BaseModel):

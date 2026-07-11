@@ -3,13 +3,14 @@
 集中管理破局平台接口的路径、方法、读写能力与状态。破局接口定义明确后，
 仅需修改本文件即可适配，避免改动散落各处（技术方案 7.2）。
 
-MVP 现状：
-- 已验证：query_people（志愿者看板学员列表）/ fetch_checkins（学员打卡）/
+MVP 现状（2026-07-11 修订）：
+- 已验证：query_people（志愿者看板学员列表）/ fetch_clockin_records
+  （学员打卡 - POST /server/clock-in/volunteer-query）/
+  list_attachments（学员打卡图片 - GET /server/attachment/list）/
   submit_grade（评改写回）。
 - 待确认：submit_checkin（学员打卡写）/ fetch_self_progress（学员自身进度读）。
-
-⚠️ fetch_checkins 的响应字段映射为占位；query_people 的 records 字段已与
-档案字段（迁移 0004）严格对齐。
+- 已删除：fetch_checkins（旧 GET /api/volunteer/checkins 与破局实际接口
+  不符，2026-07-11 替换为 fetch_clockin_records）。
 """
 
 from __future__ import annotations
@@ -44,10 +45,17 @@ ENDPOINTS: dict[str, PojuEndpoint] = {
         capability="read",
         status="verified",
     ),
-    "fetch_checkins": PojuEndpoint(
-        name="拉取学员打卡记录",
+    "fetch_clockin_records": PojuEndpoint(
+        name="拉取学员打卡记录（clock-in）",
+        method="POST",
+        path="/server/clock-in/volunteer-query",
+        capability="read",
+        status="verified",
+    ),
+    "list_attachments": PojuEndpoint(
+        name="拉取学员打卡附件",
         method="GET",
-        path="/api/volunteer/checkins",
+        path="/server/attachment/list",
         capability="read",
         status="verified",
     ),
