@@ -9,6 +9,7 @@ import {
   Empty,
   Tabs,
   Input,
+  Select,
   Table,
   Tag,
   Tooltip,
@@ -39,6 +40,53 @@ import type {
   PendingGradeOut,
   ReminderItem,
 } from '@/api/types';
+
+// ---------------------------------------------------------------------------
+// 业务状态（2026-07-11 重做）：不再透传破局 remind_status，由前端按
+// (打卡天数, 可休息天数, 目标天数) 派生。优先级：已上岸 > 已失败 > 未打卡 > 危险 > 进度正常。
+// ---------------------------------------------------------------------------
+
+type ReminderStatus =
+  | 'not_started'   // 未打卡
+  | 'failed'        // 已失败
+  | 'completed'     // 已上岸
+  | 'danger'        // 危险
+  | 'on_track';     // 进度正常
+
+interface ReminderStatusMeta {
+  label: string;  // 中文显示
+  color: string;  // antd Tag color
+}
+
+const REMINDER_STATUS_META: Record<ReminderStatus, ReminderStatusMeta> = {
+  not_started: { label: '未打卡',   color: 'default' },
+  failed:      { label: '已失败',   color: 'red'    },
+  completed:   { label: '已上岸',   color: 'green'  },
+  danger:      { label: '危险',     color: 'orange' },
+  on_track:    { label: '进度正常', color: 'blue'   },
+};
+
+/**
+ * 判定学员业务状态。
+ *
+ * - 已上岸：打卡天数已达最低目标（camp.min_checkin_days）
+ * - 已失败：可休息天数 < 0（无论打卡多少都已透支，沉底）
+ * - 未打卡：打卡 = 0 且可休息仍 ≥ 0（营刚开始阶段的零打卡学员）
+ *   → 注意：若一直未打卡，营进入中后期 rest_days<0 后会自动归到"已失败"
+ * - 危险：可休息天数 1~2 天
+ * - 进度正常：其余（有打卡、rest ≥ 3、未达最低目标）
+ */
+function classifyReminderStatus(
+  clockInDays: number,
+  restDays: number,
+  target: number,
+): ReminderStatus {
+  if (clockInDays >= target) return 'completed';
+  if (restDays < 0) return 'failed';
+  if (clockInDays === 0) return 'not_started';
+  if (restDays < 3) return 'danger';
+  return 'on_track';
+}
 
 /**
  * P6 志愿者·学员看板（design.md 6.P6 + ui-prototype #volunteer-dashboard）。
@@ -72,6 +120,8 @@ export default function VolunteerDashboard() {
   const [tab, setTab] = useState<TabKey>('all');
   // 学员昵称搜索（前端过滤）
   const [searchText, setSearchText] = useState('');
+  // 全部 tab 的业务状态筛选（默认 'all'）
+  const [statusFilter, setStatusFilter] = useState<ReminderStatus | 'all'>('all');
 
   // 手动同步
   const syncMut = useSyncBoard(campId ?? -1);
@@ -413,14 +463,32 @@ export default function VolunteerDashboard() {
             ]}
             style={{ marginBottom: -16 }}
           />
-          <Input
-            allowClear
-            prefix={<SearchOutlined style={{ color: 'var(--text-light)' }} />}
-            placeholder="搜索学员昵称 / 微信"
-            style={{ width: 240 }}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* 状态筛选仅「全部」tab 生效；切到「待评改」时自动隐藏 */}
+            {tab === 'all' && (
+              <Select<ReminderStatus | 'all'>
+                value={statusFilter}
+                onChange={setStatusFilter}
+                style={{ width: 140 }}
+                options={[
+                  { value: 'all',         label: '全部状态' },
+                  { value: 'not_started', label: '未打卡' },
+                  { value: 'failed',      label: '已失败' },
+                  { value: 'completed',   label: '已上岸' },
+                  { value: 'danger',      label: '危险' },
+                  { value: 'on_track',    label: '进度正常' },
+                ]}
+              />
+            )}
+            <Input
+              allowClear
+              prefix={<SearchOutlined style={{ color: 'var(--text-light)' }} />}
+              placeholder="搜索学员昵称 / 微信"
+              style={{ width: 240 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* 表格：待提醒 tab / 全部 tab 用破局 reminders 数据；其他 tab 走学员看板 */}
@@ -430,6 +498,9 @@ export default function VolunteerDashboard() {
             data={filteredReminders}
             campId={campId}
             totalDays={camp?.total_days ?? 0}
+            minCheckinDays={camp?.min_checkin_days ?? 1}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
           />
         ) : (
           <PendingGradeTable
@@ -438,13 +509,11 @@ export default function VolunteerDashboard() {
             campId={campId}
           />
         )}
-        <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 12 }}>
-          {tab === 'all' ? (
-            <>显示 {filteredReminders.length} / {reminders?.length ?? 0} 名学员（破局实时数据）</>
-          ) : (
-            <>显示 {filteredPendingGrades.length} / {pendingGrades?.length ?? 0} 条待评改打卡</>
-          )}
-        </div>
+        {tab === 'pending' && (
+          <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 12 }}>
+            显示 {filteredPendingGrades.length} / {pendingGrades?.length ?? 0} 条待评改打卡
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -555,28 +624,64 @@ function PendingGradeTable({
 
 
 /**
- * 待提醒 / 全部 学员表格。
+ * 「全部」tab 学员表格。
  *
  * 数据源：useReminders → GET /api/volunteer/camps/{id}/reminders（实时拉取破局）。
+ *
  * 列严格按需求文档：
  *   学员 | 打卡天数/总天数 | 可休息天数 | 状态 | 操作
  *
- * - 学员显示 wechat_name，回退 user_number
- * - 打卡天数/总天数：clockInDays / camp.total_days
- * - 状态：is_done=true → "已提醒"；否则按 remind_status 字符串展示
- * - 操作：本地 student_id 命中 → 「查看档案」；否则「未关联」
+ * 状态（2026-07-11 重做）：不再透传破局 remind_status，按
+ * (clockInDays, restDays, minCheckinDays) 派生业务状态：
+ *   已上岸 / 已失败 / 未打卡 / 危险 / 进度正常。
+ *
+ * 排序：clockInDays 升序、restDays 升序（越少越靠前）。
+ * 筛选：statusFilter='all' 不过滤，否则按业务状态精确匹配。
+ *
+ * 操作：本地 student_id 命中 → 「查看档案」；否则「未关联」。
  */
 function ReminderTable({
   loading,
   data,
   campId,
   totalDays,
+  minCheckinDays,
+  statusFilter,
+  onStatusFilterChange,
 }: {
   loading: boolean;
   data: ReminderItem[];
   campId: number | undefined;
   totalDays: number;
+  minCheckinDays: number;
+  statusFilter: ReminderStatus | 'all';
+  onStatusFilterChange: (v: ReminderStatus | 'all') => void;
 }) {
+  // 先排序：打卡天数升序 → 可休息天数升序（少的越危险，越靠前）
+  const sorted = useMemo(
+    () =>
+      [...data].sort((a, b) => {
+        if (a.clock_in_days !== b.clock_in_days) {
+          return a.clock_in_days - b.clock_in_days;
+        }
+        return a.rest_days - b.rest_days;
+      }),
+    [data],
+  );
+
+  // 再按业务状态过滤（先排后筛，过滤后顺序保留）
+  const filtered = useMemo(
+    () =>
+      statusFilter === 'all'
+        ? sorted
+        : sorted.filter(
+            (r) =>
+              classifyReminderStatus(r.clock_in_days, r.rest_days, minCheckinDays) ===
+              statusFilter,
+          ),
+    [sorted, statusFilter, minCheckinDays],
+  );
+
   const columns: ColumnsType<ReminderItem> = [
     {
       title: '学员',
@@ -608,14 +713,17 @@ function ReminderTable({
     },
     {
       title: '状态',
-      key: 'remind_status',
-      width: 130,
-      render: (_: unknown, row) =>
-        row.is_done ? (
-          <Tag color="green">已提醒</Tag>
-        ) : (
-          <Tag color="orange">{row.remind_status || '待提醒'}</Tag>
-        ),
+      key: 'status',
+      width: 120,
+      render: (_: unknown, row) => {
+        const status = classifyReminderStatus(
+          row.clock_in_days,
+          row.rest_days,
+          minCheckinDays,
+        );
+        const meta = REMINDER_STATUS_META[status];
+        return <Tag color={meta.color}>{meta.label}</Tag>;
+      },
     },
     {
       title: '操作',
@@ -636,17 +744,27 @@ function ReminderTable({
     },
   ];
 
-  if (!loading && data.length === 0) {
-    return <Empty description="当前没有学员数据" style={{ padding: '32px 0' }} />;
+  if (!loading && filtered.length === 0) {
+    return (
+      <Empty
+        description={statusFilter === 'all' ? '当前没有学员数据' : '当前筛选条件下没有学员'}
+        style={{ padding: '32px 0' }}
+      />
+    );
   }
   return (
-    <Table<ReminderItem>
-      rowKey="user_number"
-      loading={loading}
-      dataSource={data}
-      columns={columns}
-      pagination={false}
-      size="middle"
-    />
+    <>
+      <Table<ReminderItem>
+        rowKey="user_number"
+        loading={loading}
+        dataSource={filtered}
+        columns={columns}
+        pagination={false}
+        size="middle"
+      />
+      <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 12 }}>
+        显示 {filtered.length} / {data.length} 名学员（破局实时数据）
+      </div>
+    </>
   );
 }
