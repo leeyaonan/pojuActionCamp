@@ -317,6 +317,31 @@ export interface InitResult {
   synced_at?: string | null;
 }
 
+/**
+ * 单条待提醒学员（实时拉取破局，不落库）。
+ *
+ * 数据源：POST /server/volunteer/member-clock-in-status。
+ * remind_status 是状态机（NOT_REMINDED → REMINDING → REMINDED...），这里
+ * 用 string 透传所有可能值，前端按需渲染。
+ *
+ * student_id 由后端按 user_number 反查 students 表得到；未匹配到为 null
+ * （破局返回了学员但本地还没初始化档案）。
+ */
+export interface ReminderItem {
+  user_number: string;
+  student_id: number | null;
+  wechat_name?: string | null;
+  wechat_id?: string | null;
+  /** 当前打卡天数（破局 clockInDays） */
+  clock_in_days: number;
+  /** 可休息天数（破局 restDays） */
+  rest_days: number;
+  /** 破局原始状态字符串（透传，不锁枚举） */
+  remind_status: string;
+  /** 志愿者是否已提醒（isDone=true） */
+  is_done: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // 手册
 // ---------------------------------------------------------------------------

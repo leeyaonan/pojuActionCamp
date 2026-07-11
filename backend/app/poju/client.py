@@ -375,6 +375,133 @@ class PojuClient:
             return resp
         return []
 
+    async def fetch_member_clockin_status(
+        self,
+        action_id: str,
+        *,
+        page_size: int = 50,
+        max_pages: int = 20,
+    ) -> tuple[list[dict[str, Any]], list[str], int, int]:
+        """拉取某 actionId 下学员打卡状态（待提醒列表）。
+
+        POST /server/volunteer/member-clock-in-status，body:
+            {pageNum, pageSize, filters:{actionId}, orders:[{column:"clockInDays", sorting:"asc"}]}
+
+        响应嵌套结构：``{"code":200,"msg":"success","data":{pageSize,pageNum,total,records:[...]}}``
+        与 query-people / fetch_clockin_records 同款（复用 _extract_payload_like_people）。
+
+        单条记录字段：
+            userNumber / volunteerNumber / campId / wechatName / wechatId /
+            clockInDays / restDays / remindStatus / isDone
+
+        错误处理：
+        - PojuAuthError → 立刻上抛。
+        - 单页网络/业务错 → 跳过该页，errors 追加一条，继续翻页。
+        - total <= 0 或 records 为空 → 立刻结束。
+
+        Returns:
+            (records_normalized, errors, pages_fetched, total_from_poju)。
+
+        Raises:
+            PojuAuthError: Token 失效，上抛。
+            PojuNotAvailable: 接口 pending，上抛。
+            ValueError: action_id 为空。
+        """
+        if not action_id or not action_id.strip():
+            raise ValueError("action_id 不能为空")
+
+        endpoint = ENDPOINTS["fetch_member_clockin_status"]
+        all_records: list[dict[str, Any]] = []
+        errors: list[str] = []
+        pages_fetched = 0
+        total: Optional[int] = None
+
+        page = 1
+        while True:
+            if page > max_pages:
+                logger.warning(
+                    "fetch_member_clockin_status 翻页超上限 %d (action_id=%s)，停止",
+                    max_pages,
+                    action_id,
+                )
+                errors.append(f"翻页超过最大页数 {max_pages}，请检查 pageSize 配置")
+                break
+
+            payload = {
+                "pageNum": page,
+                "pageSize": page_size,
+                "filters": {"actionId": action_id},
+                "orders": [{"column": "clockInDays", "sorting": "asc"}],
+            }
+            try:
+                resp = await self._request(endpoint, json=payload)
+                pages_fetched += 1
+            except PojuAuthError:
+                raise
+            except (PojuApiError, PojuNetworkError, PojuNotAvailable) as exc:
+                logger.warning(
+                    "fetch_member_clockin_status 第 %d 页失败(action_id=%s): %s",
+                    page,
+                    action_id,
+                    exc,
+                )
+                errors.append(f"第 {page} 页失败：{exc}")
+                page += 1
+                continue
+
+            data = self._extract_payload_like_people(resp)
+            if total is None:
+                total = data["total"]
+            records = data["records"]
+            if not records:
+                break
+            all_records.extend(self._normalize_remind_status(r) for r in records)
+            page += 1
+            if total is not None and total <= page_size * (page - 1):
+                break
+
+        return all_records, errors, pages_fetched, total or 0
+
+    def _normalize_remind_status(self, item: dict[str, Any]) -> dict[str, Any]:
+        """把待提醒单条记录标准化为内部字段字典。
+
+        字段映射（与 schemas/volunteer.py ReminderItem 严格对齐）：
+        - 主键：user_number（破局 userNumber，students.user_number 同义）
+        - 学员身份：wechat_name / wechat_id / volunteer_number
+        - 打卡统计：clock_in_days / rest_days（破局原始 int）
+        - 状态：remind_status（透传字符串，不锁枚举，前向兼容）
+        - 完成标记：is_done（bool）
+
+        注：remindStatus 是状态机（NOT_REMINDED → REMINDING → REMINDED...），
+        当前实现只见到 NOT_REMINDED，但透传所有值，由 service 层按需渲染。
+        """
+        def _s(v: Any) -> Optional[str]:
+            if v is None:
+                return None
+            s = str(v).strip()
+            return s or None
+
+        def _i(v: Any) -> Optional[int]:
+            if v is None or v == "":
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
+        is_done_raw = item.get("isDone")
+        return {
+            "user_number": _s(item.get("userNumber")),
+            "volunteer_number": _s(item.get("volunteerNumber")),
+            "camp_id": _s(item.get("campId")),
+            "wechat_name": _s(item.get("wechatName")),
+            "wechat_id": _s(item.get("wechatId")),
+            "clock_in_days": _i(item.get("clockInDays")),
+            "rest_days": _i(item.get("restDays")),
+            "remind_status": _s(item.get("remindStatus")) or "UNKNOWN",
+            "is_done": bool(is_done_raw) if is_done_raw is not None else False,
+        }
+
     def _normalize_clockin(self, item: dict[str, Any]) -> dict[str, Any]:
         """把 clock-in 单条记录标准化为 CheckinRecord ORM 同名字段。
 

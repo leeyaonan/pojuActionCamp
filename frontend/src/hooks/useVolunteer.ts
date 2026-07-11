@@ -13,6 +13,7 @@ export const volunteerKeys = {
   archive: (studentId: number) => ['student-archive', studentId] as const,
   pending: (campId: number) => ['pending-grades', campId] as const,
   gradeDraft: (checkinId: number) => ['grade-draft', checkinId] as const,
+  reminders: (campId: number) => ['reminders', campId] as const,
 };
 
 /** 学员看板列表 */
@@ -39,6 +40,18 @@ export function usePendingGrades(campId?: number) {
     queryKey: volunteerKeys.pending(campId ?? -1),
     queryFn: () => volunteerApi.listPendingGrades(campId as number),
     enabled: !!campId,
+  });
+}
+
+/** 待提醒列表（实时拉取破局，不入缓存太久） */
+export function useReminders(campId?: number) {
+  return useQuery({
+    queryKey: volunteerKeys.reminders(campId ?? -1),
+    queryFn: () => volunteerApi.listReminders(campId as number),
+    enabled: !!campId,
+    // 待提醒状态变化频繁，进入 tab 即拉一次；不设 staleTime，每次切换 tab 重拉
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 

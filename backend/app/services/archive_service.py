@@ -42,6 +42,7 @@ from app.schemas.volunteer import (
     ArchiveStats,
     ArchiveTimelineItem,
     InitResult,
+    ReminderItem,
     StudentArchive,
     StudentStatus,
     StudentSummary,
@@ -717,6 +718,108 @@ class ArchiveService:
 
         # 排序：未达标的在前（gap_to_min 降序），再按 id 升序
         result.sort(key=lambda x: (-x.gap_to_min, x.id))
+        return result
+
+    # ------------------------------------------------------------------
+    # 读：待提醒列表（实时拉取破局，不落库）
+    # ------------------------------------------------------------------
+
+    async def list_reminders(self, camp_id: int) -> list[ReminderItem]:
+        """实时拉取待提醒列表（不入库）。
+
+        数据来源：POST /server/volunteer/member-clock-in-status。
+        remind_status 是状态机，实时性高；故不落库，每次进入 tab 现拉。
+
+        流程（2026-07-11 新增，对齐 list_students 的校验模板）：
+        1. camp 必须为志愿者身份（role='volunteer'）。
+        2. camp.poju_action_id 必须已填写（否则抛 1001）。
+        3. PojuConfig 必须有 token + base_url（否则抛 1001）。
+        4. 解密 token → 构建 PojuClient → fetch_member_clockin_status。
+        5. 按 user_number 反查本地 Student.id（用于前端「查看档案」深链）。
+        6. 返回 list[ReminderItem]，records 为空时返回 []。
+
+        异常映射：
+        - PojuAuthError → 上抛，由统一异常处理器接管为 401。
+        - 其它破局异常 → 上抛，由统一异常处理器接管为 502。
+
+        Returns:
+            list[ReminderItem]：实时拉取的待提醒学员列表。
+
+        Raises:
+            NotFoundError: camp 不存在/已软删。
+            ValidationError: 角色不符 / 缺 actionId / 缺 token/base_url。
+            PojuAuthError: Token 失效。
+        """
+        camp = await self._get_active_camp(camp_id)
+        if camp.role != "volunteer":
+            raise ValidationError(
+                f"camp {camp_id} 不是志愿者行动营（role={camp.role}），无法拉取待提醒列表"
+            )
+        if not camp.poju_action_id or not camp.poju_action_id.strip():
+            raise ValidationError(
+                "尚未填写破局行动营 ID (actionId)，请到「行动营设置」补填后再拉取"
+            )
+
+        config = await self._get_poju_config()
+        if config is None or not config.base_url or not config.token:
+            raise ValidationError("破局接口未配置（缺少 token 或 base_url）")
+
+        plaintext_token: str = _decrypt_poju_token(
+            _build_fernet(self.settings.secret_key), config.token
+        )
+        client = PojuClient(base_url=config.base_url, token=plaintext_token)
+        try:
+            try:
+                records, _errors, _pages, _total = await client.fetch_member_clockin_status(
+                    action_id=camp.poju_action_id,
+                )
+            except PojuAuthError:
+                raise
+        finally:
+            await client.close()
+
+        # 按 user_number 反查本地 student.id（用于「查看档案」深链）
+        user_numbers = [r["user_number"] for r in records if r.get("user_number")]
+        sid_map = await self._lookup_student_ids_by_user_number(camp_id, user_numbers)
+
+        return [
+            ReminderItem(
+                user_number=r["user_number"],
+                student_id=sid_map.get(r["user_number"]),
+                wechat_name=r["wechat_name"],
+                wechat_id=r["wechat_id"],
+                clock_in_days=r["clock_in_days"] or 0,
+                rest_days=r["rest_days"] or 0,
+                remind_status=r["remind_status"] or "UNKNOWN",
+                is_done=r["is_done"],
+            )
+            for r in records
+        ]
+
+    async def _lookup_student_ids_by_user_number(
+        self,
+        camp_id: int,
+        user_numbers: list[str],
+    ) -> dict[str, int]:
+        """按 user_number 反查 student.id，返回 {user_number: student.id}。
+
+        用于 list_reminders 在破局实时数据上 enrichment 出本地 Student.id，
+        便于前端「查看档案」按钮跳到 /students/{id}。未匹配到的 user_number
+        不在返回 dict 中（调用方 sid_map.get(...) 默认 None）。
+        """
+        if not user_numbers:
+            return {}
+        stmt = select(Student.user_number, Student.id).where(
+            and_(
+                Student.camp_id == camp_id,
+                Student.user_number.in_(user_numbers),
+            )
+        )
+        rows = (await self.session.execute(stmt)).all()
+        result: dict[str, int] = {}
+        for row in rows:
+            if row.user_number:
+                result[str(row.user_number)] = int(row.id)
         return result
 
     # ------------------------------------------------------------------

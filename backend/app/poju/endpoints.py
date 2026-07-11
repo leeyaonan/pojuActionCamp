@@ -7,7 +7,7 @@ MVP 现状（2026-07-11 修订）：
 - 已验证：query_people（志愿者看板学员列表）/ fetch_clockin_records
   （学员打卡 - POST /server/clock-in/volunteer-query）/
   list_attachments（学员打卡图片 - GET /server/attachment/list）/
-  submit_grade（评改写回）。
+  submit_grade（评改写回）/ fetch_member_clockin_status（学员打卡状态·待提醒）。
 - 待确认：submit_checkin（学员打卡写）/ fetch_self_progress（学员自身进度读）。
 - 已删除：fetch_checkins（旧 GET /api/volunteer/checkins 与破局实际接口
   不符，2026-07-11 替换为 fetch_clockin_records）。
@@ -56,6 +56,13 @@ ENDPOINTS: dict[str, PojuEndpoint] = {
         name="拉取学员打卡附件",
         method="GET",
         path="/server/attachment/list",
+        capability="read",
+        status="verified",
+    ),
+    "fetch_member_clockin_status": PojuEndpoint(
+        name="拉取学员打卡状态（待提醒）",
+        method="POST",
+        path="/server/volunteer/member-clock-in-status",
         capability="read",
         status="verified",
     ),

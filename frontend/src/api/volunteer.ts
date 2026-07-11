@@ -6,6 +6,7 @@ import type {
   GradeSaveDraftIn,
   InitResult,
   PendingGradeOut,
+  ReminderItem,
   StudentArchive,
   StudentStatus,
   StudentSummary,
@@ -13,12 +14,13 @@ import type {
 } from './types';
 
 /**
- * 志愿者端 API（学员看板、档案、评改、初始化/刷新档案）。
+ * 志愿者端 API（学员看板、档案、评改、初始化/刷新档案、待提醒）。
  *
  * - POST /api/volunteer/camps/{id}/sync                  手动同步（拉打卡）
  * - POST /api/volunteer/camps/{id}/archive/init         初始化学员档案（拉名单）
  * - POST /api/volunteer/camps/{id}/archive/refresh      刷新学员档案（覆盖式）
  * - GET  /api/volunteer/camps/{id}/students             学员看板列表
+ * - GET  /api/volunteer/camps/{id}/reminders            待提醒列表（实时）
  * - GET  /api/volunteer/students/{id}                   学员档案
  * - GET  /api/volunteer/camps/{id}/grades/pending       待评改列表
  * - POST /api/volunteer/grades/generate                 生成评改
@@ -58,6 +60,13 @@ export function getStudentArchive(studentId: number) {
 
 export function listPendingGrades(campId: number) {
   return http.get<PendingGradeOut[]>(`/volunteer/camps/${campId}/grades/pending`).then((r) => r.data);
+}
+
+/** 实时拉取待提醒列表（不入库） */
+export function listReminders(campId: number) {
+  return http
+    .get<ReminderItem[]>(`/volunteer/camps/${campId}/reminders`)
+    .then((r) => r.data);
 }
 
 export function generateGrade(payload: GradeGenerateIn) {

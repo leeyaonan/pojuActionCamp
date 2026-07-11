@@ -32,11 +32,13 @@ import {
   usePendingGrades,
   useInitArchive,
   useRefreshArchive,
+  useReminders,
 } from '@/hooks/useVolunteer';
 import DeleteCampButton from '@/components/DeleteCampButton';
 import type {
   InitResult,
   PendingGradeOut,
+  ReminderItem,
   StudentStatus,
   StudentSummary,
 } from '@/api/types';
@@ -66,18 +68,22 @@ export default function VolunteerDashboard() {
   // 待评改列表（每条 = 一条 CheckinRecord；营未开始时应为空）
   const { data: pendingGrades } = usePendingGrades(campId);
 
-  // 当前 Tab：'all' | 'pending' | 'insufficient' | 'graded'
-  //  - 'pending' → 真·待评改打卡列表（/grades/pending）
-  //  - 其他       → 学员维度看板（/students?status=...）
-  // 见 archive_service._grading_status_from_valid_days：营未开始时所有学员都会落到
-  // 'pending'，与「真·待评改打卡」语义错位（本 bug 修复点）。
+  // 当前 Tab：'all' | 'pending' | 'insufficient' | 'graded' | 'remind'
+  //  - 'all'        → 全部学员（数据来自破局 member-clock-in-status 实时拉取）
+  //  - 'pending'    → 真·待评改打卡列表（/grades/pending）
+  //  - 'insufficient' → 本地 valid_days 不足（学员档案视角）
+  //  - 'graded'     → 本地 valid_days 已达标（学员档案视角）
+  //  - 'remind'     → 待提醒列表（数据来自破局 member-clock-in-status）
   const [tab, setTab] = useState<TabKey>('all');
   // 学员昵称搜索（前端过滤）
   const [searchText, setSearchText] = useState('');
 
   // 待评改 tab 不走学员列表——它是「按打卡记录」维度；其余 tab 走学员看板。
+  // 'all' 与 'remind' tab 都用 useReminders（破局实时数据），不走 useStudents。
   const studentStatus = useMemo<StudentStatus | undefined>(() => {
+    if (tab === 'all') return undefined; // 「全部」tab 改用 reminders 数据
     if (tab === 'pending') return undefined; // 待评改由 usePendingGrades 单独渲染
+    if (tab === 'remind') return undefined; // 待提醒由 useReminders 单独渲染
     if (tab === 'insufficient') return 'unqualified';
     if (tab === 'graded') return 'qualified';
     return undefined;
@@ -96,21 +102,27 @@ export default function VolunteerDashboard() {
   const initMut = useInitArchive(campId ?? -1);
   const refreshMut = useRefreshArchive(campId ?? -1);
 
+  // 待提醒列表（破局实时拉取；用于「全部」与「待提醒」tab）
+  const { data: reminders, isLoading: remindersLoading } = useReminders(campId);
+
   // 全部学员（用于 Tab 数量徽章 + 统计）
   const { data: allStudents } = useStudents(campId);
 
-  // 四个 Tab 的数量：
-  //  - pending：真·待评改数（= pendingGrades 长度，营未开始为 0）
-  //  - others：来自学员列表的 status 过滤
+  // 五个 Tab 的数量：
+  //  - all      → 破局 reminders 总数（破局视角的"全部"）
+  //  - pending  → 真·待评改数（= pendingGrades 长度，营未开始为 0）
+  //  - others   → 来自学员列表的 status 过滤
+  //  - remind   → reminders 数量（破局视角的"待提醒"）
   const counts = useMemo(() => {
     const list = allStudents ?? [];
     return {
-      all: list.length,
+      all: (reminders ?? []).length,
       pending: (pendingGrades ?? []).length,
       insufficient: list.filter((s) => s.status === 'unqualified').length,
       graded: list.filter((s) => s.status === 'qualified').length,
+      remind: (reminders ?? []).length,
     };
-  }, [allStudents, pendingGrades]);
+  }, [allStudents, pendingGrades, reminders]);
 
   // 今日已打卡近似 = 待评改列表数（它们都是已提交但未/刚评的）+ 历史已评改中
   // 今日的暂未通过其他接口拉，留作 MVP 简化（接口已存在 /grading_audit/today
@@ -273,6 +285,18 @@ export default function VolunteerDashboard() {
         String(p.day_number).includes(kw)
     );
   }, [pendingGrades, searchText]);
+
+  // 待提醒 / 全部 tab 的搜索过滤（学员昵称 / 编号）
+  const filteredReminders = useMemo(() => {
+    const list = reminders ?? [];
+    const kw = searchText.trim().toLowerCase();
+    if (!kw) return list;
+    return list.filter(
+      (r) =>
+        (r.wechat_name ?? '').toLowerCase().includes(kw) ||
+        r.user_number.toLowerCase().includes(kw)
+    );
+  }, [reminders, searchText]);
 
   // 最近一次同步时间（取列表中最新一条 last_synced_at）
   const lastSyncedAt = useMemo(() => {
@@ -452,6 +476,7 @@ export default function VolunteerDashboard() {
               { key: 'pending', label: `待评改 ${counts.pending}` },
               { key: 'insufficient', label: `打卡不足 ${counts.insufficient}` },
               { key: 'graded', label: `已评改 ${counts.graded}` },
+              { key: 'remind', label: `待提醒 ${counts.remind}` },
             ]}
             style={{ marginBottom: -16 }}
           />
@@ -465,8 +490,15 @@ export default function VolunteerDashboard() {
           />
         </div>
 
-        {/* 表格：待评改 tab 用真·待评改打卡列表；其他 tab 用学员看板 */}
-        {tab === 'pending' ? (
+        {/* 表格：待提醒 tab / 全部 tab 用破局 reminders 数据；其他 tab 走学员看板 */}
+        {tab === 'remind' || tab === 'all' ? (
+          <ReminderTable
+            loading={remindersLoading}
+            data={filteredReminders}
+            campId={campId}
+            totalDays={camp?.total_days ?? 0}
+          />
+        ) : tab === 'pending' ? (
           <PendingGradeTable
             loading={!pendingGrades && !!campId}
             data={filteredPendingGrades}
@@ -481,7 +513,11 @@ export default function VolunteerDashboard() {
           />
         )}
         <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 12 }}>
-          {tab === 'pending' ? (
+          {tab === 'all' ? (
+            <>显示 {filteredReminders.length} / {reminders?.length ?? 0} 名学员（破局实时数据）</>
+          ) : tab === 'remind' ? (
+            <>显示 {filteredReminders.length} / {reminders?.length ?? 0} 条待提醒</>
+          ) : tab === 'pending' ? (
             <>显示 {filteredPendingGrades.length} / {pendingGrades?.length ?? 0} 条待评改打卡</>
           ) : (
             <>显示 {filteredStudents.length} / {students?.length ?? 0} 名学员</>
@@ -496,7 +532,7 @@ export default function VolunteerDashboard() {
 // 子组件
 // ---------------------------------------------------------------------------
 
-type TabKey = 'all' | 'pending' | 'insufficient' | 'graded';
+type TabKey = 'all' | 'pending' | 'insufficient' | 'graded' | 'remind';
 
 interface StatCardProps {
   primary: React.ReactNode;
@@ -745,4 +781,101 @@ function StatusBadge({ status }: { status: StudentStatus }) {
   if (status === 'unqualified') return <Tag color="red">打卡不足</Tag>;
   if (status === 'qualified') return <Tag color="green">已评改</Tag>;
   return <Tag>{status}</Tag>;
+}
+
+/**
+ * 待提醒 / 全部 学员表格。
+ *
+ * 数据源：useReminders → GET /api/volunteer/camps/{id}/reminders（实时拉取破局）。
+ * 列严格按需求文档：
+ *   学员 | 打卡天数/总天数 | 可休息天数 | 状态 | 操作
+ *
+ * - 学员显示 wechat_name，回退 user_number
+ * - 打卡天数/总天数：clockInDays / camp.total_days
+ * - 状态：is_done=true → "已提醒"；否则按 remind_status 字符串展示
+ * - 操作：本地 student_id 命中 → 「查看档案」；否则「未关联」
+ */
+function ReminderTable({
+  loading,
+  data,
+  campId,
+  totalDays,
+}: {
+  loading: boolean;
+  data: ReminderItem[];
+  campId: number | undefined;
+  totalDays: number;
+}) {
+  const columns: ColumnsType<ReminderItem> = [
+    {
+      title: '学员',
+      key: 'wechat_name',
+      width: 160,
+      render: (_: unknown, row) => (
+        <div>
+          <div style={{ fontWeight: 600 }}>{row.wechat_name || row.user_number}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{row.user_number}</div>
+        </div>
+      ),
+    },
+    {
+      title: '打卡天数/总天数',
+      key: 'clock_in_days',
+      width: 160,
+      render: (_: unknown, row) => (
+        <span>
+          {row.clock_in_days} <span style={{ color: 'var(--text-light)' }}>/ {totalDays}</span>
+        </span>
+      ),
+    },
+    {
+      title: '可休息天数',
+      dataIndex: 'rest_days',
+      key: 'rest_days',
+      width: 110,
+      render: (n: number) => <span>{n ?? 0}</span>,
+    },
+    {
+      title: '状态',
+      key: 'remind_status',
+      width: 130,
+      render: (_: unknown, row) =>
+        row.is_done ? (
+          <Tag color="green">已提醒</Tag>
+        ) : (
+          <Tag color="orange">{row.remind_status || '待提醒'}</Tag>
+        ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 140,
+      render: (_: unknown, row) =>
+        row.student_id ? (
+          <Link to={`/camp/${campId}/volunteer/archive/${row.student_id}`}>
+            <Button size="small" icon={<FileTextOutlined />}>
+              查看档案
+            </Button>
+          </Link>
+        ) : (
+          <Tooltip title="本地未关联该学员，请先初始化档案">
+            <span style={{ color: 'var(--text-light)' }}>未关联</span>
+          </Tooltip>
+        ),
+    },
+  ];
+
+  if (!loading && data.length === 0) {
+    return <Empty description="当前没有学员数据" style={{ padding: '32px 0' }} />;
+  }
+  return (
+    <Table<ReminderItem>
+      rowKey="user_number"
+      loading={loading}
+      dataSource={data}
+      columns={columns}
+      pagination={false}
+      size="middle"
+    />
+  );
 }

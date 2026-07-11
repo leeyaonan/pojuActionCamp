@@ -201,3 +201,36 @@ class InitResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     message: str
     synced_at: Optional[datetime] = Field(default=None, description="同步时间(成功时)")
+
+
+class ReminderItem(BaseModel):
+    """单条待提醒学员信息（实时拉取破局，不落库）。
+
+    数据来源：POST /server/volunteer/member-clock-in-status。
+    remind_status 是状态机（NOT_REMINDED → REMINDING → REMINDED ...），
+    这里透传字符串，由前端按需渲染，不锁枚举（前向兼容）。
+
+    Attributes:
+        user_number: 破局编号（userNumber），与 students.user_number 同义，
+            用于反查本地 Student.id。
+        student_id: 本地 Student.id（按 user_number 反查匹配），未匹配到为 None。
+        wechat_name: 学员微信昵称。
+        wechat_id: 微信号。
+        clock_in_days: 当前打卡天数（破局 clockInDays）。
+        rest_days: 可休息天数（破局 restDays）。
+        remind_status: 提醒状态原始字符串（如 NOT_REMINDED）。
+        is_done: 志愿者是否已提醒（isDone=true）。
+    """
+
+    user_number: str = Field(..., description="破局编号（userNumber）")
+    student_id: Optional[int] = Field(
+        default=None, description="本地 Student.id（按 user_number 匹配）"
+    )
+    wechat_name: Optional[str] = None
+    wechat_id: Optional[str] = None
+    clock_in_days: int = Field(default=0, ge=0, description="当前打卡天数")
+    rest_days: int = Field(default=0, ge=0, description="可休息天数")
+    remind_status: str = Field(
+        default="UNKNOWN", description="破局原始状态字符串（透传，不锁枚举）"
+    )
+    is_done: bool = Field(default=False, description="志愿者是否已提醒")

@@ -30,6 +30,7 @@ from app.schemas.volunteer import (
     GradeGenerateIn,
     InitResult,
     PendingGradeOut,
+    ReminderItem,
     StudentArchive,
     StudentStatus,
     StudentSummary,
@@ -210,6 +211,27 @@ async def list_pending_grades(
 ) -> dict:
     """列出指定行动营下所有待评改的 CheckinRecord，含学员昵称 join。"""
     items: list[PendingGradeOut] = await service.list_pending(camp_id)
+    data = [item.model_dump(mode="json") for item in items]
+    return success(data)
+
+
+@router.get(
+    "/camps/{camp_id}/reminders",
+    response_model=None,
+    summary="实时拉取待提醒学员列表（破局 member-clock-in-status）",
+)
+async def list_reminders(
+    camp_id: int = Path(..., gt=0, description="行动营 ID（志愿者营）"),
+    service: ArchiveService = Depends(_archive_service),
+) -> dict:
+    """实时拉取指定行动营下所有需要提醒的学员。
+
+    - camp 必须为志愿者身份（role='volunteer'）。
+    - camp.poju_action_id 必须已填写（否则抛 1001）。
+    - PojuAuthError → 401（统一异常处理器接管）。
+    - 数据不落库，每次进入 tab 实时拉取。
+    """
+    items: list[ReminderItem] = await service.list_reminders(camp_id)
     data = [item.model_dump(mode="json") for item in items]
     return success(data)
 
